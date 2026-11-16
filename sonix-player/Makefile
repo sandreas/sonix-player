@@ -409,11 +409,12 @@ clean:
 
 .PHONY: test
 TEST_CFLAGS = -O2 -g -Wall -Wextra -I.
-TEST_BINS = build_tests/test_seekpolicy build_tests/test_keymap
+TEST_BINS = build_tests/test_seekpolicy build_tests/test_keymap build_tests/test_hookclicks
 
 test: $(TEST_BINS)
 	./build_tests/test_seekpolicy
 	./build_tests/test_keymap
+	./build_tests/test_hookclicks
 
 # The headers are prerequisites so that editing one rebuilds the test, but they
 # stay out of the compiler command: clang would build a precompiled header from
@@ -427,6 +428,11 @@ build_tests/test_keymap: tests/test_keymap.c src/system/input/keymap.c \
 						 src/system/input/seekpolicy.c src/system/core/config.c \
 						 src/system/input/keymap.h src/system/input/seekpolicy.h \
 						 src/system/core/config.h
+	@mkdir -p build_tests
+	$(CC) $(TEST_CFLAGS) -o $@ $(filter %.c,$^)
+
+build_tests/test_hookclicks: tests/test_hookclicks.c src/system/input/hookclicks.c \
+							 src/system/input/hookclicks.h
 	@mkdir -p build_tests
 	$(CC) $(TEST_CFLAGS) -o $@ $(filter %.c,$^)
 

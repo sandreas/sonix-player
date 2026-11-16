@@ -107,6 +107,12 @@ typedef enum {
 
 void gui_notify_key(gui_key_t key);
 
+// Whether a held skip key may seek right now. The input thread calls this
+// before starting a scrub: it covers only the modes that hold the output (USB
+// DAC, Wi-Fi transfer, metronome), not receiver/DLNA ownership, which is
+// checked separately.
+bool gui_seek_allowed(void);
+
 // New volume level, already applied to the hardware: this only updates what is
 // on screen.
 void gui_notify_volume(int percent);

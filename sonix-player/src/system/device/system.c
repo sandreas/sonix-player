@@ -1262,6 +1262,24 @@ void input_set_volume_step(int percent) {
 	volume_step_percent = percent;
 }
 
+// How far one step of a held skip key seeks, in seconds, kept per direction:
+// forward and back are separate settings (Settings > More > Seek steps). Read
+// by the key threads, written by the interface. A value below one second is
+// meaningless as a step, so it falls back to the default.
+static volatile int seek_back_seconds = 10;
+static volatile int seek_forward_seconds = 10;
+
+void input_set_seek_steps(int back, int forward) {
+	if (back < 1) {
+		back = 10;
+	}
+	if (forward < 1) {
+		forward = 10;
+	}
+	seek_back_seconds = back;
+	seek_forward_seconds = forward;
+}
+
 // One step up or down, as a signed change of the volume.
 static int volume_step_delta(int code) {
 	int step = volume_step_percent;
@@ -1478,13 +1496,16 @@ static bool mapped_action_repeats(keymap_button_t button) {
 // track change moves to the RELEASE: deciding it on the way down would change
 // track and then seek inside the new one, both from a single press.
 //
-// The step is deliberately coarse and constant. A ramp reads well on a screen
-// where the position is visible; with the player in a pocket, "so many seconds
-// per second" is the thing a thumb can aim with.
+// The step is deliberately coarse and constant for the whole hold: a ramp
+// reads well on a screen where the position is visible; with the player in a
+// pocket, "so many seconds per second" is the thing a thumb can aim with.
 // ---------------------------------------------------------------------------
 #define SEEK_HOLD_MS 500	 // held this long: it is a seek, not a skip
 #define SEEK_REPEAT_MS 250	 // and another step every quarter second
-#define SEEK_STEP_SECONDS 5.0
+
+static double seek_seconds(bool forward) {
+	return (double)(forward ? seek_forward_seconds : seek_back_seconds);
+}
 
 static bool mapped_action_seeks(keymap_button_t button) {
 	keymap_action_t action = effective_action(button);
@@ -1496,19 +1517,24 @@ static bool mapped_action_seeks(keymap_button_t button) {
 // and the seek itself happens when the button is let go (device_state.h).
 // Refuses on anything with no position to move along -- a live radio stream has
 // neither a length nor a point to come back to.
-static void seek_step(keymap_button_t button) {
+static bool seek_step(keymap_button_t button) {
 	keymap_action_t action = effective_action(button);
 	if (action != KEYMAP_ACTION_NEXT && action != KEYMAP_ACTION_PREV) {
-		return;
+		return false;
 	}
 
 	device_state_t state;
 	device_state_get(&state);
 	if (state.live || state.progress_total_secs <= 0) {
-		return;
+		return false;
 	}
 
-	device_state_scrub_by((action == KEYMAP_ACTION_NEXT) ? SEEK_STEP_SECONDS : -SEEK_STEP_SECONDS);
+	bool forward = action == KEYMAP_ACTION_NEXT;
+	double step = seek_seconds(forward);
+	device_state_scrub_by(forward ? step : -step);
+	// Whether it actually started: a stopped track is refused inside
+	// device_state, and the caller needs to know so it can drop the hold.
+	return device_state_scrub_active(NULL);
 }
 
 // WHAT REPEATS IS THE ACTION, NOT THE KEY.

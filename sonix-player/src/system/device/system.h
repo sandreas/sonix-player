@@ -129,6 +129,11 @@ void input_set_key_lock(bool on);
 #define VOLUME_STEP_MAX 5
 void input_set_volume_step(int percent);
 
+// How far one step of a held skip key seeks, in seconds, per direction (back,
+// forward): Settings > More > Seek steps. A value below one second falls back
+// to the ten-second default.
+void input_set_seek_steps(int back, int forward);
+
 #ifdef HOST_BUILD
 // Feeds one key press or release to the button thread, as if it had come off
 // an evdev node. `code` is a KEY_* from linux/input.h.

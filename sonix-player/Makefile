@@ -414,7 +414,7 @@ TEST_BINS = build_tests/test_seekpolicy
 test: $(TEST_BINS)
 	./build_tests/test_seekpolicy
 
-build_tests/test_seekpolicy: tests/test_seekpolicy.c src/system/input/seekpolicy.c
+build_tests/test_seekpolicy: tests/test_seekpolicy.c src/system/input/seekpolicy.c src/system/input/seekpolicy.h
 	@mkdir -p build_tests
 	$(CC) $(TEST_CFLAGS) -o $@ $^
 

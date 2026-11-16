@@ -1,6 +1,6 @@
 #include "src/system/input/seekpolicy.h"
 
-#include <linux/input-event-codes.h>
+#include <linux/input.h>
 #include <string.h>
 
 int seekpolicy_clamp_step(int seconds) {

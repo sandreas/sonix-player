@@ -1,5 +1,5 @@
 #include "src/system/input/seekpolicy.h"
-#include <linux/input-event-codes.h>
+#include <linux/input.h>
 #include <stdio.h>
 
 #define EXPECT(cond) do { if (!(cond)) { \

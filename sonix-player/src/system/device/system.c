@@ -26,6 +26,7 @@
 #include "src/system/bluetooth/bluetooth.h"
 #include "src/system/bluetooth/btlog.h"
 #include "src/system/bluetooth/btplayer.h"
+#include "src/system/bluetooth/btreceiver.h"
 #include "src/system/audio/audio.h"
 #include "src/system/audio/alsa-controls.h"
 #include "src/system/playback/device_state.h"
@@ -1507,6 +1508,66 @@ static double seek_seconds(bool forward) {
 	return (double)(forward ? seek_forward_seconds : seek_back_seconds);
 }
 
+// ---------------------------------------------------------------------------
+// Seek mode
+//
+// With the skip mode set to "seek" (keymap.h), a skip gesture moves inside the
+// track instead of changing it, and holding play rewinds. The mode belongs to
+// the local transport alone: in Bluetooth receiver mode or while DLNA owns
+// playback the skip keys mean the phone or the cast, so the mode is off there.
+// ---------------------------------------------------------------------------
+
+// Whether Seek mode is in force right now: the setting is on AND the skip keys
+// belong to this player rather than a receiver session or a DLNA cast.
+static bool skip_mode_seek(void) {
+	return keymap_skip_mode() == SEEK_SKIP_SEEK &&
+		   seekpolicy_skip_mode_applies(btreceiver_is_active(), dlna_owns_playback());
+}
+
+// Whether this button, pressed now, is a seek key. Next and previous always
+// are in Seek mode; play is only when it still means play/pause (play-hold
+// rewind). The double click is sacred: its configured action is used verbatim
+// and is never reinterpreted by Seek mode, so an overridden button is never a
+// seek key.
+static bool seek_key_action(keymap_button_t button) {
+	if (button == override_button) {
+		return false;
+	}
+	if (!skip_mode_seek()) {
+		return false;
+	}
+	if (button == KEYMAP_BTN_PLAY) {
+		// Play-hold rewind only when the play button is actually play/pause:
+		// one remapped to next or previous skips instead of rewinding.
+		return effective_action(button) == KEYMAP_ACTION_PLAY_PAUSE;
+	}
+	keymap_action_t action = effective_action(button);
+	return action == KEYMAP_ACTION_NEXT || action == KEYMAP_ACTION_PREV;
+}
+
+// Which way a seek key scrubs: next forward, previous back, and a play-hold
+// rewinds.
+static bool seek_direction_forward(keymap_button_t button) {
+	keymap_action_t action = effective_action(button);
+	if (action == KEYMAP_ACTION_NEXT) {
+		return true;
+	}
+	if (action == KEYMAP_ACTION_PREV) {
+		return false;
+	}
+	return false; /* play-hold rewinds */
+}
+
+// Whether a hold may scrub the local transport at all. gui_seek_allowed() covers
+// the modes that hold the output for something else (USB DAC, Wi-Fi transfer,
+// metronome); the policy covers receiver and DLNA ownership. Checked on every
+// step, in Track mode too, so a hold never scrubs while a phone or a cast is
+// the thing actually playing.
+static bool local_seek_allowed(void) {
+	return gui_seek_allowed() &&
+		   seekpolicy_skip_mode_applies(btreceiver_is_active(), dlna_owns_playback());
+}
+
 static bool mapped_action_seeks(keymap_button_t button) {
 	keymap_action_t action = effective_action(button);
 	return action == KEYMAP_ACTION_NEXT || action == KEYMAP_ACTION_PREV;
@@ -1516,10 +1577,28 @@ static bool mapped_action_seeks(keymap_button_t button) {
 // decoder here: the step moves the scrub position, the interface follows it,
 // and the seek itself happens when the button is let go (device_state.h).
 // Refuses on anything with no position to move along -- a live radio stream has
-// neither a length nor a point to come back to.
+// neither a length nor a point to come back to -- and on anything that is not
+// this player's to move (receiver mode, DLNA, a held output).
 static bool seek_step(keymap_button_t button) {
-	keymap_action_t action = effective_action(button);
-	if (action != KEYMAP_ACTION_NEXT && action != KEYMAP_ACTION_PREV) {
+	bool forward;
+	if (skip_mode_seek() && seek_key_action(button)) {
+		// In Seek mode the button's own meaning gives the direction: next
+		// forward, previous back, a play-hold rewinds.
+		forward = seek_direction_forward(button);
+	} else {
+		// Track mode keeps next forward and previous back; anything else is
+		// not a seek at all.
+		keymap_action_t action = effective_action(button);
+		if (action != KEYMAP_ACTION_NEXT && action != KEYMAP_ACTION_PREV) {
+			return false;
+		}
+		forward = action == KEYMAP_ACTION_NEXT;
+	}
+
+	// A hold never scrubs while the output belongs to something else, in Track
+	// mode too: in receiver mode or while DLNA owns playback the skip keys
+	// reach the phone or the cast, not this player.
+	if (!local_seek_allowed()) {
 		return false;
 	}
 
@@ -1529,7 +1608,6 @@ static bool seek_step(keymap_button_t button) {
 		return false;
 	}
 
-	bool forward = action == KEYMAP_ACTION_NEXT;
 	double step = seek_seconds(forward);
 	device_state_scrub_by(forward ? step : -step);
 	// Whether it actually started: a stopped track is refused inside
@@ -1555,7 +1633,7 @@ static bool key_repeats_held(int code, bool headset) {
 		return code == KEY_VOLUMEUP || code == KEY_VOLUMEDOWN;
 	}
 	keymap_button_t button = keymap_button_for_code(code);
-	return mapped_action_repeats(button) || mapped_action_seeks(button);
+	return mapped_action_repeats(button) || mapped_action_seeks(button) || seek_key_action(button);
 }
 
 // A held key that seeks rather than steps the volume: it waits longer before
@@ -1564,22 +1642,26 @@ static bool key_seeks_held(int code, bool headset) {
 	if (code < 0 || headset) {
 		return false;
 	}
-	return mapped_action_seeks(keymap_button_for_code(code));
+	keymap_button_t button = keymap_button_for_code(code);
+	return mapped_action_seeks(button) || seek_key_action(button);
 }
 
 static void run_mapped_action(keymap_button_t button);
 
-static void repeat_held(int code, bool headset) {
+// One repeat of the held key. Returns true when the repeat started a scrub, so
+// the caller can mark the hold as a seek; a refused seek returns false and the
+// release then runs the ordinary action instead.
+static bool repeat_held(int code, bool headset) {
 	if (headset) {
 		apply_volume_step(code);
-		return;
+		return false;
 	}
 	keymap_button_t button = keymap_button_for_code(code);
-	if (mapped_action_seeks(button)) {
-		seek_step(button);
-		return;
+	if (mapped_action_seeks(button) || seek_key_action(button)) {
+		return seek_step(button);
 	}
 	run_mapped_action(button);
+	return false;
 }
 
 static void run_mapped_action(keymap_button_t button) {
@@ -1802,15 +1884,21 @@ static void *input_thread_func(void *arg) {
 					continue;
 				}
 				bool seeking = key_seeks_held(held, info->headset);
+				bool seek_started = false;
 				if (!suppressed) {
-					repeat_held(held, info->headset);
+					seek_started = repeat_held(held, info->headset);
 				}
-				if (seeking) {
+				if (seeking && seek_started) {
 					// From here the release has nothing left to do: the press
 					// became a seek and must not also change track.
 					seeked = true;
+					held_repeated = true;
+				} else if (!seeking) {
+					// A volume key that repeated: its release is not a click.
+					held_repeated = true;
 				}
-				held_repeated = true;
+				// A seek that refused (live stream, stopped, no length) leaves
+				// both flags clear, so the release runs the ordinary action.
 				next_repeat = now + (seeking ? SEEK_REPEAT_MS : VOLUME_REPEAT_PERIOD_MS);
 			} else if (held == KEY_POWER && !long_press_done &&
 					   (int32_t)(now - (held_since + POWER_LONG_PRESS_MS)) >= 0) {
@@ -1897,8 +1985,14 @@ static void *input_thread_func(void *arg) {
 
 			held = ev.code;
 			held_since = now_ms();
+			keymap_button_t button = keymap_button_for_code(ev.code);
 			bool seeks = key_seeks_held(held, info->headset);
-			next_repeat = held_since + (seeks ? SEEK_HOLD_MS : VOLUME_REPEAT_DELAY_MS);
+			// In Seek mode next and previous scrub from the instant they go
+			// down: there is no track change to wait out, so the first step is
+			// immediate. Play still waits for the hold threshold, or a quick
+			// tap would rewind instead of toggling play/pause.
+			bool immediate = !info->headset && seek_key_action(button) && button != KEYMAP_BTN_PLAY;
+			next_repeat = held_since + (seeks ? (immediate ? 0 : SEEK_HOLD_MS) : VOLUME_REPEAT_DELAY_MS);
 			long_press_done = false;
 			deferred = false;
 			seeked = false;
@@ -1921,6 +2015,15 @@ static void *input_thread_func(void *arg) {
 				deferred = true;
 			} else if (seeks) {
 				deferred = true;
+				// In Seek mode the first step runs now rather than after the
+				// hold threshold. A refusal (live stream, no length, or the
+				// output belonging elsewhere) leaves `seeked` clear so the
+				// release runs the ordinary action instead.
+				if (immediate && seek_step(button)) {
+					seeked = true;
+					held_repeated = true;
+					next_repeat = now_ms() + SEEK_REPEAT_MS;
+				}
 			} else if (!info->headset && ev.code == KEY_VOLUMEDOWN && key_lock_gesture_armed()) {
 				// Possibly the first half of the lock gesture, with power to
 				// follow: what it does on its own waits for the release, or

@@ -1872,6 +1872,10 @@ static void *input_thread_func(void *arg) {
 	// Until when a headset click code is the driver's echo of a gesture this
 	// thread already carried out (see headset_click_code()).
 	uint32_t headset_echo_until = 0;
+	// A headset hold whose deadline committed early: its remaining value-1
+	// repeats are the same physical hold, not a new one, so they must not
+	// start a second scrub or a second commit on release.
+	int headset_hold_consumed = -1;
 
 	for (;;) {
 		// The deadline is whatever the held key is waiting for; with nothing
@@ -1931,6 +1935,12 @@ static void *input_thread_func(void *arg) {
 			// the position for good. The hold is then dropped: a later value-1
 			// is a new press, not a continuation of this one.
 			if (seeked && (int32_t)(now - seek_deadline) >= 0) {
+				// A headset hold that outlives the deadline is not a new hold
+				// when the driver's next value-1 arrives: remember the code
+				// and swallow its repeats until the physical release.
+				if (info->headset && (held == KEY_FASTFORWARD || held == KEY_REWIND)) {
+					headset_hold_consumed = held;
+				}
 				device_state_scrub_commit();
 				seeked = false;
 				held_repeated = false;
@@ -2053,6 +2063,9 @@ static void *input_thread_func(void *arg) {
 			// path so a hold never toggles play/pause or changes track.
 			if (info->headset && (ev.code == KEY_FASTFORWARD || ev.code == KEY_REWIND)) {
 				hook_clicks_cancel(&hook); // a hold is not a click sequence
+				if (ev.code == headset_hold_consumed) {
+					continue; // this physical hold already committed at the deadline
+				}
 				if (held == ev.code) {
 					continue; // the driver's 200 ms repeat: still held
 				}
@@ -2180,6 +2193,13 @@ static void *input_thread_func(void *arg) {
 		}
 
 		if (ev.value == 0) {
+			if (info->headset && ev.code == headset_hold_consumed) {
+				// The release of a hold that the deadline already committed:
+				// there is nothing left to seek, and the next press is a new
+				// gesture.
+				headset_hold_consumed = -1;
+				continue;
+			}
 			bool combo = !info->headset && combo_release(ev.code);
 
 			if (ev.code == KEY_POWER && !long_press_done && !combo) {

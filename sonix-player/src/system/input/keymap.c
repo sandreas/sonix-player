@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "src/system/core/config.h"
+#include "src/system/input/seekpolicy.h"
 
 // Written by the remapping page on the UI thread, read by the physical-button
 // threads. No lock: these are small ints read and written whole, so no reader
@@ -48,6 +49,12 @@ static keymap_action_t action_from_key(const char *name, keymap_action_t fallbac
 static keymap_button_t double_button = KEYMAP_BTN_COUNT;
 static keymap_action_t double_action = KEYMAP_ACTION_NONE;
 
+// The skip gesture's settings, cached for the same reason as the table above:
+// the input threads decide on a press whether it is a skip or a seek, and must
+// not read the config while doing it.
+static volatile int skip_mode = SEEK_SKIP_TRACK;
+static volatile int seek_step = 10;
+
 static keymap_button_t button_from_key(const char *name) {
 	if (name) {
 		for (int i = 0; i < KEYMAP_BTN_COUNT; i++) {
@@ -66,6 +73,9 @@ void keymap_init(void) {
 	}
 	double_button = button_from_key(config_get("keys", "double_button", NULL));
 	double_action = action_from_key(config_get("keys", "double_action", NULL), KEYMAP_ACTION_NONE);
+
+	skip_mode = seekpolicy_mode_from_name(config_get("keys", "skip_mode", "track"));
+	seek_step = seekpolicy_clamp_step((int)config_get_int("keys", "seek_step", 10));
 }
 
 keymap_button_t keymap_double_button(void) { return double_button; }
@@ -83,6 +93,24 @@ void keymap_set_double(keymap_button_t button, keymap_action_t action) {
 	double_action = action;
 	config_set("keys", "double_button", button < KEYMAP_BTN_COUNT ? KEYS[button] : "none");
 	config_set("keys", "double_action", ACTION_KEYS[action]);
+	config_save();
+}
+
+seek_skip_mode_t keymap_skip_mode(void) { return (seek_skip_mode_t)skip_mode; }
+int keymap_seek_step(void) { return seek_step; }
+
+void keymap_set_skip_mode(seek_skip_mode_t mode) {
+	if (mode != SEEK_SKIP_TRACK && mode != SEEK_SKIP_SEEK) {
+		return;
+	}
+	skip_mode = mode;
+	config_set("keys", "skip_mode", seekpolicy_mode_name(mode));
+	config_save();
+}
+
+void keymap_set_seek_step(int seconds) {
+	seek_step = seekpolicy_clamp_step(seconds);
+	config_set_int("keys", "seek_step", seek_step);
 	config_save();
 }
 

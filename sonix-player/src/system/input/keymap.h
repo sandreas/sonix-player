@@ -3,6 +3,8 @@
 
 #include <stdbool.h>
 
+#include "src/system/input/seekpolicy.h"
+
 // What the buttons on the side of the device do.
 //
 // On the R3 Pro II's right side, below the power button, there are three: one
@@ -69,7 +71,19 @@ void keymap_set_double(keymap_button_t button, keymap_action_t action);
 // Whether the double click is on: a button and an action other than none.
 bool keymap_double_enabled(void);
 
-// The action's name passes through tr() where it is drawn.
+// What a skip gesture does -- jump to the next or previous track, or move
+// inside the current one -- and how many seconds a seek step covers. Cached
+// rather than read from the config: the input threads decide on every press
+// and must not call config_get_*() there.
+seek_skip_mode_t keymap_skip_mode(void);
+void keymap_set_skip_mode(seek_skip_mode_t mode);
+int keymap_seek_step(void);
+
+// Clamps to a step the interface offers (see seekpolicy_clamp_step).
+void keymap_set_seek_step(int seconds);
+
+// The action's name, in the source's Italian like every other string here; it
+// passes through tr() where it is drawn.
 const char *keymap_action_name(keymap_action_t action);
 
 #endif /* KEYMAP_H */

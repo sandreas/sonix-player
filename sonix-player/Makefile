@@ -409,14 +409,26 @@ clean:
 
 .PHONY: test
 TEST_CFLAGS = -O2 -g -Wall -Wextra -I.
-TEST_BINS = build_tests/test_seekpolicy
+TEST_BINS = build_tests/test_seekpolicy build_tests/test_keymap
 
 test: $(TEST_BINS)
 	./build_tests/test_seekpolicy
+	./build_tests/test_keymap
+
+# The headers are prerequisites so that editing one rebuilds the test, but they
+# stay out of the compiler command: clang would build a precompiled header from
+# a .h on the command line, and with -o naming the test binary that fails.
 
 build_tests/test_seekpolicy: tests/test_seekpolicy.c src/system/input/seekpolicy.c src/system/input/seekpolicy.h
 	@mkdir -p build_tests
-	$(CC) $(TEST_CFLAGS) -o $@ $^
+	$(CC) $(TEST_CFLAGS) -o $@ $(filter %.c,$^)
+
+build_tests/test_keymap: tests/test_keymap.c src/system/input/keymap.c \
+						 src/system/input/seekpolicy.c src/system/core/config.c \
+						 src/system/input/keymap.h src/system/input/seekpolicy.h \
+						 src/system/core/config.h
+	@mkdir -p build_tests
+	$(CC) $(TEST_CFLAGS) -o $@ $(filter %.c,$^)
 
 # The bundled libraries and their extracted sources. The downloaded tarballs stay.
 .PHONY: libs-clean

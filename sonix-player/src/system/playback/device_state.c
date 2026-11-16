@@ -1,5 +1,6 @@
 #include "device_state.h"
 
+#include "src/system/input/seekpolicy.h"
 #include "src/system/audio/alsa-controls.h"
 #include "src/system/audio/audio.h"
 #include "src/system/audio/readahead.h"
@@ -1553,6 +1554,10 @@ audio_status_t device_state_toggle_play_pause(void) {
 // ---------------------------------------------------------------------------
 static bool scrubbing;
 static double scrub_target;
+// The length the open scrub was measured against. Kept here so the commit
+// can tell the audiobook and podcast state keepers the full length, which
+// is what they need when they write a position down.
+static double scrub_total;
 // The track the open scrub was measured on. A hold that runs to the end of a
 // track lets the queue move on underneath it, and seconds counted on the track
 // that finished mean nothing on the one that started.
@@ -1563,11 +1568,26 @@ static char scrub_file[512];
 // is theirs alone.
 static pthread_mutex_t scrub_lock = PTHREAD_MUTEX_INITIALIZER;
 
+// Maps the audio engine's status onto the seek policy's: the two enums would
+// drift apart otherwise, and the policy must never be asked about a state it
+// does not know.
+static seek_status_t seek_status(audio_status_t status) {
+	if (status == AUDIO_STATUS_PLAYING) return SEEK_STATUS_PLAYING;
+	if (status == AUDIO_STATUS_PAUSED) return SEEK_STATUS_PAUSED;
+	return SEEK_STATUS_STOPPED;
+}
+
 static void scrub_cancel(void) {
 	pthread_mutex_lock(&scrub_lock);
 	scrubbing = false;
 	pthread_mutex_unlock(&scrub_lock);
 }
+
+// The input thread calls this when a node disappears or a mode change abandons
+// a hold: the scrub was in flight on a track that is no longer the one the UI
+// was counting on, so the open scrub has to go rather than landing on the
+// wrong file when the button comes up.
+void device_state_scrub_cancel(void) { scrub_cancel(); }
 
 bool device_state_scrub_active(double *position_out) {
 	pthread_mutex_lock(&scrub_lock);
@@ -1583,14 +1603,23 @@ void device_state_scrub_by(double delta) {
 	double current = 0;
 	double total = 0;
 	audio_get_progress(&current, &total);
-	if (total <= 0) {
-		return; // nothing with a length to run through: a live stream
+
+	// The policy refuses to start a seek on a stopped track, a live stream,
+	// or anything without a known length. A scrub that cannot start is one
+	// that must not have started: the input thread is holding a button and
+	// asking for a position, and running the number on a track that is not
+	// there would leave a scrub target that can never land.
+	device_state_t state;
+	device_state_get(&state);
+	if (!seekpolicy_can_start(seek_status(state.status), state.live, total)) {
+		return;
 	}
 
 	pthread_mutex_lock(&scrub_lock);
 	if (!scrubbing) {
 		scrubbing = true;
 		scrub_target = current; // from where the music actually is
+		scrub_total = total;    // the length the position was counted against
 		snprintf(scrub_file, sizeof(scrub_file), "%s", current_metadata_file);
 	}
 	scrub_target += delta;
@@ -1612,16 +1641,34 @@ void device_state_scrub_commit(void) {
 	pthread_mutex_lock(&scrub_lock);
 	bool was = scrubbing;
 	double target = scrub_target;
+	double total = scrub_total;
 	char file[sizeof(scrub_file)];
 	snprintf(file, sizeof(file), "%s", scrub_file);
 	scrubbing = false;
 	pthread_mutex_unlock(&scrub_lock);
 
+	// The policy refuses to commit on a stopped track: a scrub that was
+	// started while playing can come up on a track that has ended under it,
+	// and the seek must not start that track again.
+	if (!seekpolicy_can_commit(seek_status(audio_get_status()))) {
+		return;
+	}
+
 	// The track can end while the button is held, and the button comes up
 	// after the queue has already started the next one: seek only the track
-	// the position was counted on.
+	// the position was counted on, and write the position notes only when
+	// the same file is the one that just moved.
 	if (was && strcmp(file, current_metadata_file) == 0) {
 		device_state_seek(target);
+		// A seek that landed on an audiobook or a podcast episode moves the
+		// position the book/episode state keeper has written down: without
+		// this, a hold that moved the track half an hour forward would come
+		// back to the place it started from on the next boot.
+		if (audiobook_is_playing()) {
+			audiobook_note_position(target, total, true);
+		} else if (podcastcache_is_episode(file)) {
+			podcaststate_note(file, target, total, true);
+		}
 	}
 }
 

@@ -4516,9 +4516,14 @@ void player_key_next_chapter(void) {
 	// A folder book lists its files as chapters, so parts come first -- the
 	// same order the chapter list itself uses.
 	if (audiobook_part_count() > 1) {
-		if (player_play_audiobook_part(audiobook_part_current() + 1)) {
-			update_progress();
+		if (!player_play_audiobook_part(audiobook_part_current() + 1)) {
+			// The last part: no next file to start, so the press is the
+			// ordinary forward jump, as it is at the last chapter.
+			device_state_t state;
+			device_state_get(&state);
+			audiobook_seek_by((double)audiobook_skip_forward(), &state);
 		}
+		update_progress();
 		return;
 	}
 

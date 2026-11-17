@@ -415,6 +415,7 @@ test: $(TEST_BINS)
 	./build_tests/test_seekpolicy
 	./build_tests/test_keymap
 	./build_tests/test_hookclicks
+	python3 tests/check_language_keys.py
 
 # The headers are prerequisites so that editing one rebuilds the test, but they
 # stay out of the compiler command: clang would build a precompiled header from

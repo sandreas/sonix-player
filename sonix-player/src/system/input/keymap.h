@@ -24,7 +24,8 @@
 // The in-line headphone remote does not come through here: it sends the same
 // codes, but it is another device with another convention (one click, two
 // clicks, three clicks), and remapping it together with the side buttons would
-// change two things while meaning to change one.
+// change two things while meaning to change one. Its holds and click gestures
+// are handled by system.c instead.
 
 typedef enum {
 	// Right side: the media rocker.

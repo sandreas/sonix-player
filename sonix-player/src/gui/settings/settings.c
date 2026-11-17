@@ -28,6 +28,9 @@
 #include "src/system/device/power.h"
 #include "src/system/device/screenshot.h"
 #include "src/system/device/system.h"
+#include "src/system/input/keymap.h"
+#include "src/system/input/seekpolicy.h"
+#include "src/system/playback/device_state.h"
 
 lv_obj_t *settings_screen;
 
@@ -435,6 +438,43 @@ static void screenshot_toggled_cb(lv_event_t *e) {
 
 static void build_screenshot_card(lv_obj_t *container);
 
+// Skip buttons: whether next/previous change track or move inside the current
+// item. The values are cached in keymap.c for the input threads; the two pills
+// and the step row are only the interface to them.
+static lv_obj_t *skip_track_pill;
+static lv_obj_t *skip_seek_pill;
+static lv_obj_t *seek_step_pills[3];
+
+static const int SEEK_STEPS[3] = {10, 30, 60};
+
+static void refresh_seek_pills(void) {
+	if (!skip_track_pill || !skip_seek_pill) {
+		return;
+	}
+	settingsrow_pill_active(skip_track_pill, keymap_skip_mode() == SEEK_SKIP_TRACK);
+	settingsrow_pill_active(skip_seek_pill, keymap_skip_mode() == SEEK_SKIP_SEEK);
+
+	int step = keymap_seek_step();
+	for (int i = 0; i < 3; i++) {
+		settingsrow_pill_active(seek_step_pills[i], SEEK_STEPS[i] == step);
+	}
+}
+
+static void skip_mode_cb(lv_event_t *e) {
+	// A mode change while a hold is open must not leave the old direction
+	// running: close the scrub before the next press reads the new table.
+	device_state_scrub_commit();
+	keymap_set_skip_mode((seek_skip_mode_t)(intptr_t)lv_event_get_user_data(e));
+	player_apply_seek_steps();
+	refresh_seek_pills();
+}
+
+static void seek_step_cb(lv_event_t *e) {
+	keymap_set_seek_step((int)(intptr_t)lv_event_get_user_data(e));
+	player_apply_seek_steps();
+	refresh_seek_pills();
+}
+
 static void build_other_page(gui_config_t *cfg) {
 	othersettings_screen = lv_obj_create(NULL);
 	lv_obj_t *container = settingsrow_page(othersettings_screen, cfg, "settings_keys");
@@ -445,6 +485,40 @@ static void build_other_page(gui_config_t *cfg) {
 	}
 
 	settingsrow_add(container, "remap_buttons", NULL, switch_screen_cb, remap_screen);
+
+	// What a skip gesture means, and how far one step goes. The two settings
+	// live beside the remap row because they describe the buttons, not the
+	// music; a book or a podcast still has its own jump sizes.
+	lv_obj_t *skip_pills = NULL;
+	settingsrow_pills(container, "settings_skip_buttons", &skip_pills);
+	skip_track_pill =
+		settingsrow_pill(skip_pills, "settings_skip_track", SEEK_SKIP_TRACK, skip_mode_cb);
+	skip_seek_pill = settingsrow_pill(skip_pills, "settings_skip_seek", SEEK_SKIP_SEEK, skip_mode_cb);
+
+	lv_obj_t *skip_note = lv_label_create(container);
+	lv_label_set_long_mode(skip_note, LV_LABEL_LONG_WRAP);
+	lv_obj_set_width(skip_note, lv_pct(100));
+	lv_obj_add_style(skip_note, &theme_style_text_dim, 0);
+	lv_obj_set_style_text_font(skip_note, &font_ui_18, 0);
+	lv_label_set_text(skip_note, tr("settings_skip_note"));
+
+	lv_obj_t *step_pills = NULL;
+	settingsrow_pills(container, "settings_seek_step", &step_pills);
+	for (int i = 0; i < 3; i++) {
+		char label[8];
+		snprintf(label, sizeof(label), "%d s", SEEK_STEPS[i]);
+		seek_step_pills[i] = settingsrow_pill_text(step_pills, label, SEEK_STEPS[i], seek_step_cb);
+	}
+
+	lv_obj_t *step_note = lv_label_create(container);
+	lv_label_set_long_mode(step_note, LV_LABEL_LONG_WRAP);
+	lv_obj_set_width(step_note, lv_pct(100));
+	lv_obj_add_style(step_note, &theme_style_text_dim, 0);
+	lv_obj_set_style_text_font(step_note, &font_ui_18, 0);
+	lv_label_set_text(step_note, tr("settings_seek_step_note"));
+
+	refresh_seek_pills();
+	theme_register_refresh(refresh_seek_pills);
 
 	settingsrow_slider(container, "settings_volume_steps", VOLUME_STEP_MAX - VOLUME_STEP_MIN + 1, &volume_step_value,
 					   &volume_step_slider, volume_step_changed_cb);

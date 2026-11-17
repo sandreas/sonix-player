@@ -1500,6 +1500,8 @@ static bool mapped_action_repeats(keymap_button_t button) {
 // The step is deliberately coarse and constant for the whole hold: a ramp
 // reads well on a screen where the position is visible; with the player in a
 // pocket, "so many seconds per second" is the thing a thumb can aim with.
+// The size comes from the cached interval (keymap/music, or the book/podcast
+// setting), and Seek mode decides whether a short press already moves.
 // ---------------------------------------------------------------------------
 #define SEEK_HOLD_MS 500	 // held this long: it is a seek, not a skip
 #define SEEK_REPEAT_MS 250	 // and another step every quarter second

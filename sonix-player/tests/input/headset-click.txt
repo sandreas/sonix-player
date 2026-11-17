@@ -1,0 +1,17 @@
+# One click: the hook fires play/pause once.
+0 164 1 1
+60 164 0 1
+
+# Two clicks inside the 300 ms hook window: next chapter/track.
+1000 164 1 1
+1060 164 0 1
+1150 164 1 1
+1210 164 0 1
+
+# Three clicks inside the hook window: previous chapter/track.
+3000 164 1 1
+3060 164 0 1
+3150 164 1 1
+3210 164 0 1
+3300 164 1 1
+3360 164 0 1

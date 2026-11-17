@@ -40,7 +40,7 @@ static void clock_clicked_cb(lv_event_t *e) {
 }
 
 // In-line remote keys on the headphone cable: play/pause and the two skips.
-// Under More, since it is touched when headphones change, not daily.
+// Under Buttons, since it is touched when headphones change, not daily.
 static lv_obj_t *headset_switch;
 
 static void headset_toggled_cb(lv_event_t *e) {

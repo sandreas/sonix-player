@@ -169,6 +169,15 @@ The device's buttons are on the keyboard:
 | `b` | previous track | the skip key: next track |
 | `n` | play / pause | same |
 | `m` | next track | previous track (no such key on the R1) |
+| `h` | wired-headset play/pause | same |
+| `j` | wired-headset next | same |
+| `k` | wired-headset previous | same |
+| `r` | wired-headset rewind / seek back | same |
+| `f` | wired-headset fast-forward / seek forward | same |
+
+`SONIX_INPUT_SCRIPT` can drive a whole gesture from a file instead: each line is
+`milliseconds code value headset` (1 for the headset node, 0 for the buttons).
+It is how the hold/repeat/release sequence is checked without a device.
 
 
 ### Other environment variables

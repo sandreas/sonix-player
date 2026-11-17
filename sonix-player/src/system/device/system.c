@@ -1645,7 +1645,11 @@ static bool seek_headset_step(int code) {
 	bool forward = seekpolicy_headset_forward(code);
 	double step = seek_seconds(forward);
 	device_state_scrub_by(forward ? step : -step);
-	return device_state_scrub_active(NULL);
+	bool started = device_state_scrub_active(NULL);
+	if (!started) {
+		printf("input: headset seek refused (no local transport or no length)\n");
+	}
+	return started;
 }
 
 // Whether a code is one of the cable remote's click codes, as opposed to a hold
@@ -1818,12 +1822,15 @@ static void handle_key_press(const char *node, int code, bool headset) {
 static void run_hook_gesture(hook_clicks_t *clicks) {
 	switch (hook_clicks_take(clicks)) {
 	case HOOK_GESTURE_PLAY_PAUSE:
+		printf("input: headset click gesture -> play/pause\n");
 		gui_notify_key(GUI_KEY_PLAY_PAUSE);
 		break;
 	case HOOK_GESTURE_NEXT:
+		printf("input: headset click gesture -> next chapter/track\n");
 		gui_notify_key(GUI_KEY_NEXT_CHAPTER);
 		break;
 	case HOOK_GESTURE_PREV:
+		printf("input: headset click gesture -> previous chapter/track\n");
 		gui_notify_key(GUI_KEY_PREV_CHAPTER);
 		break;
 	case HOOK_GESTURE_NONE:
@@ -2085,6 +2092,10 @@ static void *input_thread_func(void *arg) {
 					held_repeated = true;
 					next_repeat = now_ms() + SEEK_REPEAT_MS;
 					seek_deadline = now_ms() + SEEK_DEADLINE_MS;
+					printf("input: %s headset hold %d -> %s\n", node, ev.code,
+						   seekpolicy_headset_forward(ev.code) ? "forward" : "back");
+				} else {
+					printf("input: %s headset hold %d ignored\n", node, ev.code);
 				}
 				// A refusal (live stream, stopped, no length, receiver/DLNA)
 				// leaves the flags clear, so the release does nothing at all.
@@ -2230,6 +2241,9 @@ static void *input_thread_func(void *arg) {
 				// And one that did become a seek: this is where the music moves
 				// to where the thumb ran to, in a single seek.
 				if (seeked) {
+					if (info->headset) {
+						printf("input: %s headset hold end\n", node);
+					}
 					device_state_scrub_commit();
 				}
 				held = -1;
@@ -2283,14 +2297,7 @@ static void start_input_thread(const char *node, bool headset) { start_input_thr
 // thread does with a real key -- the long press, the volume repeat, the seek on
 // hold, the remapping, the screenshot combination -- then works unchanged.
 static int host_key_pipe[2] = {-1, -1};
-
-static void start_host_input_thread(void) {
-	if (pipe(host_key_pipe) != 0) {
-		perror("input: pipe");
-		return;
-	}
-	start_input_thread_fd("keyboard", false, host_key_pipe[0]);
-}
+static int host_headset_pipe[2] = {-1, -1};
 
 void input_host_button(int code, bool down) {
 	if (host_key_pipe[1] < 0) {
@@ -2299,6 +2306,74 @@ void input_host_button(int code, bool down) {
 	struct input_event ev = {.type = EV_KEY, .code = (unsigned short)code, .value = down ? 1 : 0};
 	if (write(host_key_pipe[1], &ev, sizeof(ev)) != (ssize_t)sizeof(ev)) {
 		perror("input: write");
+	}
+}
+
+void input_host_headset_button(int code, bool down) {
+	if (host_headset_pipe[1] < 0) {
+		return;
+	}
+	struct input_event ev = {.type = EV_KEY, .code = (unsigned short)code, .value = down ? 1 : 0};
+	if (write(host_headset_pipe[1], &ev, sizeof(ev)) != (ssize_t)sizeof(ev)) {
+		perror("input: headset write");
+	}
+}
+
+// SONIX_INPUT_SCRIPT: a file of "milliseconds code value headset" lines. It
+// lets a shell test drive a whole headset gesture (click, hold, repeat, release)
+// without a window or a keyboard, and it is why the headset hold path can be
+// checked on a machine that has no earpods_adc node.
+static void *host_script_thread(void *unused) {
+	(void)unused;
+	const char *path = getenv("SONIX_INPUT_SCRIPT");
+	if (!path || !path[0]) {
+		return NULL;
+	}
+	FILE *f = fopen(path, "r");
+	if (!f) {
+		perror("input: script");
+		return NULL;
+	}
+	unsigned ms;
+	int code;
+	int value;
+	int headset;
+	char line[128];
+	uint32_t start = now_ms();
+	while (fgets(line, sizeof(line), f)) {
+		if (line[0] == '#' || line[0] == '\n') {
+			continue;
+		}
+		if (sscanf(line, "%u %d %d %d", &ms, &code, &value, &headset) != 4) {
+			continue;
+		}
+		uint32_t due = start + ms;
+		while ((int32_t)(now_ms() - due) < 0) {
+			usleep(1000);
+		}
+		if (headset) {
+			input_host_headset_button(code, value != 0);
+		} else {
+			input_host_button(code, value != 0);
+		}
+	}
+	fclose(f);
+	return NULL;
+}
+
+static void start_host_input_thread(void) {
+	if (pipe(host_key_pipe) != 0 || pipe(host_headset_pipe) != 0) {
+		perror("input: pipe");
+		return;
+	}
+	start_input_thread_fd("keyboard", false, host_key_pipe[0]);
+	start_input_thread_fd("headset-keyboard", true, host_headset_pipe[0]);
+
+	if (getenv("SONIX_INPUT_SCRIPT")) {
+		pthread_t script;
+		if (pthread_create(&script, NULL, host_script_thread, NULL) == 0) {
+			pthread_detach(script);
+		}
 	}
 }
 #endif

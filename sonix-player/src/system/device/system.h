@@ -138,6 +138,9 @@ void input_set_seek_steps(int back, int forward);
 // Feeds one key press or release to the button thread, as if it had come off
 // an evdev node. `code` is a KEY_* from linux/input.h.
 void input_host_button(int code, bool down);
+// The same for the wired-headset node, so the hold and click paths can be
+// exercised in the simulator without an earpods_adc device.
+void input_host_headset_button(int code, bool down);
 #endif
 
 #endif /* SYSTEM_H */

@@ -45,6 +45,10 @@ def check_tree(tree: Path) -> list[str]:
     english = load(english_path)
     errors: list[str] = []
 
+    for key, value in english.items():
+        if not value:
+            errors.append(f"English.ini: {key} is empty")
+
     for path in sorted(tree.glob("*.ini")):
         if path.name == "English.ini":
             continue

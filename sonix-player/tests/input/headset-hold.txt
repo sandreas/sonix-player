@@ -1,0 +1,16 @@
+# Plain hold: KEY_FASTFORWARD is crossed to rewind. The driver repeats value=1
+# every 200 ms; the app must step once and ignore the repeats, then commit on
+# the single value=0.
+0 208 1 1
+200 208 1 1
+400 208 1 1
+600 208 1 1
+800 208 1 1
+1200 208 0 1
+
+# Click-then-hold: KEY_REWIND is crossed to fast-forward.
+2000 168 1 1
+2200 168 1 1
+2400 168 1 1
+2600 168 1 1
+3000 168 0 1

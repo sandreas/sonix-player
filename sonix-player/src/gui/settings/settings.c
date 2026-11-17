@@ -462,8 +462,8 @@ static void refresh_seek_pills(void) {
 
 static void skip_mode_cb(lv_event_t *e) {
 	// A mode change while a hold is open must not leave the old direction
-	// running: close the scrub before the next press reads the new table.
-	device_state_scrub_commit();
+	// running, and it is not a seek: drop the scrub rather than landing it.
+	device_state_scrub_cancel();
 	keymap_set_skip_mode((seek_skip_mode_t)(intptr_t)lv_event_get_user_data(e));
 	player_apply_seek_steps();
 	refresh_seek_pills();
@@ -490,16 +490,19 @@ static void build_other_page(gui_config_t *cfg) {
 	// live beside the remap row because they describe the buttons, not the
 	// music; a book or a podcast still has its own jump sizes.
 	lv_obj_t *skip_pills = NULL;
-	settingsrow_pills(container, "settings_skip_buttons", &skip_pills);
+	lv_obj_t *skip_card = settingsrow_pills(container, "settings_skip_buttons", &skip_pills);
 	skip_track_pill =
 		settingsrow_pill(skip_pills, "settings_skip_track", SEEK_SKIP_TRACK, skip_mode_cb);
 	skip_seek_pill = settingsrow_pill(skip_pills, "settings_skip_seek", SEEK_SKIP_SEEK, skip_mode_cb);
 
-	lv_obj_t *skip_note = lv_label_create(container);
+	// The note belongs to the card it explains, not floating between this card
+	// and the step below it at the same distance from both. One note for the
+	// whole model also keeps the step row above the fold on the 720 px panel.
+	lv_obj_t *skip_note = lv_label_create(skip_card);
 	lv_label_set_long_mode(skip_note, LV_LABEL_LONG_WRAP);
 	lv_obj_set_width(skip_note, lv_pct(100));
 	lv_obj_add_style(skip_note, &theme_style_text_dim, 0);
-	lv_obj_set_style_text_font(skip_note, &font_ui_18, 0);
+	lv_obj_set_style_text_font(skip_note, &font_ui_22, 0);
 	lv_label_set_text(skip_note, tr("settings_skip_note"));
 
 	lv_obj_t *step_pills = NULL;
@@ -509,13 +512,6 @@ static void build_other_page(gui_config_t *cfg) {
 		snprintf(label, sizeof(label), "%d s", SEEK_STEPS[i]);
 		seek_step_pills[i] = settingsrow_pill_text(step_pills, label, SEEK_STEPS[i], seek_step_cb);
 	}
-
-	lv_obj_t *step_note = lv_label_create(container);
-	lv_label_set_long_mode(step_note, LV_LABEL_LONG_WRAP);
-	lv_obj_set_width(step_note, lv_pct(100));
-	lv_obj_add_style(step_note, &theme_style_text_dim, 0);
-	lv_obj_set_style_text_font(step_note, &font_ui_18, 0);
-	lv_label_set_text(step_note, tr("settings_seek_step_note"));
 
 	refresh_seek_pills();
 	theme_register_refresh(refresh_seek_pills);

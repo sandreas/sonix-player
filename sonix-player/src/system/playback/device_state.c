@@ -1583,10 +1583,11 @@ static void scrub_cancel(void) {
 	pthread_mutex_unlock(&scrub_lock);
 }
 
-// The input thread calls this when a node disappears or a mode change abandons
-// a hold: the scrub was in flight on a track that is no longer the one the UI
-// was counting on, so the open scrub has to go rather than landing on the
-// wrong file when the button comes up.
+// The settings page calls this when a mode change abandons a hold: the scrub
+// was in flight on a track that is no longer the one the UI was counting on,
+// and the user asked for a new mode, not a seek, so the open scrub has to go
+// rather than landing somewhere unexpected. A node that disappears mid-hold
+// commits instead (the unplug case in the checklist).
 void device_state_scrub_cancel(void) { scrub_cancel(); }
 
 bool device_state_scrub_active(double *position_out) {

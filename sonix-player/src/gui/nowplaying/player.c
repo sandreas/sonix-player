@@ -4476,6 +4476,10 @@ bool player_play_audiobook_part(int index) {
 	if (index < 0 || index >= count) {
 		return false;
 	}
+	// A part change is a chapter jump. A paused book must stay paused, the way
+	// a chapter seek in a single-file book already does; the load below starts
+	// playing, so put it back where it was.
+	bool was_paused = audio_get_status() == AUDIO_STATUS_PAUSED;
 	char **paths = calloc((size_t)count, sizeof(char *));
 	if (!paths) {
 		return false;
@@ -4498,6 +4502,9 @@ bool player_play_audiobook_part(int index) {
 	}
 	free(paths);
 	if (ok) {
+		if (was_paused && audio_get_status() == AUDIO_STATUS_PLAYING) {
+			device_state_toggle_play_pause();
+		}
 		player_refresh_now_playing();
 	}
 	return ok;
@@ -4563,6 +4570,9 @@ void player_key_prev_chapter(void) {
 		// nowhere back to go, so it restarts there too.
 		if (current <= 0 || state.progress_current_secs > 3.0) {
 			device_state_seek(0);
+			// Written through, as every other chapter/part move does: a power
+			// cut right after would otherwise resume at the old position.
+			audiobook_note_position(0, 0, true);
 		} else {
 			player_play_audiobook_part(current - 1);
 		}

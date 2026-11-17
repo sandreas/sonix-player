@@ -1508,13 +1508,17 @@ static bool mapped_action_repeats(keymap_button_t button) {
 
 // A seek whose release never arrives -- a lost value-0, or the node gone away
 // -- must not stay open for ever: after this long the scrub is committed and
-// the hold is dropped.
-#define SEEK_DEADLINE_MS 10000
+// the hold is dropped. A headset hold is re-armed by the driver's 200 ms
+// repeat, so its deadline only runs once the repeats stop. A case button has
+// no such evidence: the app owns its repeat timer, so the cap is long enough
+// that a deliberate hold is never cut short.
+#define SEEK_DEADLINE_HEADSET_MS 10000
+#define SEEK_DEADLINE_BUTTON_MS 60000
 
-// How long after a headset click is acted on its echo is ignored. The driver
-// counts the clicks itself and, on remotes where it does, sends its own code
-// again after its release window; acting on both would run the gesture twice.
-#define HEADSET_ECHO_MS 500
+// A headset hold whose deadline committed early: the remaining value-1 repeats
+// are the same physical hold, not a new one. If its release is lost the latch
+// is dropped after this long, so the button is not dead for the session.
+#define HEADSET_HOLD_CONSUMED_MS 5000
 
 static double seek_seconds(bool forward) {
 	return (double)(forward ? seek_forward_seconds : seek_back_seconds);
@@ -1650,12 +1654,6 @@ static bool seek_headset_step(int code) {
 		printf("input: headset seek refused (no local transport or no length)\n");
 	}
 	return started;
-}
-
-// Whether a code is one of the cable remote's click codes, as opposed to a hold
-// code. The echo latch ignores the former and must never swallow the latter.
-static bool headset_click_code(int code) {
-	return code == KEY_PLAYPAUSE || code == KEY_NEXTSONG || code == KEY_PREVIOUSSONG;
 }
 
 // WHAT REPEATS IS THE ACTION, NOT THE KEY.
@@ -1881,13 +1879,11 @@ static void *input_thread_func(void *arg) {
 	bool held_repeated = false;
 	// When an open scrub must be committed even though no release arrived.
 	uint32_t seek_deadline = 0; // armed while a seek is in progress
-	// Until when a headset click code is the driver's echo of a gesture this
-	// thread already carried out (see headset_click_code()).
-	uint32_t headset_echo_until = 0;
 	// A headset hold whose deadline committed early: its remaining value-1
 	// repeats are the same physical hold, not a new one, so they must not
 	// start a second scrub or a second commit on release.
 	int headset_hold_consumed = -1;
+	uint32_t headset_hold_consumed_until = 0;
 
 	for (;;) {
 		// The deadline is whatever the held key is waiting for; with nothing
@@ -1952,6 +1948,7 @@ static void *input_thread_func(void *arg) {
 				// and swallow its repeats until the physical release.
 				if (info->headset && (held == KEY_FASTFORWARD || held == KEY_REWIND)) {
 					headset_hold_consumed = held;
+					headset_hold_consumed_until = now + HEADSET_HOLD_CONSUMED_MS;
 				}
 				device_state_scrub_commit();
 				seeked = false;
@@ -1966,7 +1963,6 @@ static void *input_thread_func(void *arg) {
 			// is held open for it (see hookclicks.h).
 			if (hook_clicks_should_expire(&hook, now, info->headset && held == KEY_PLAYPAUSE)) {
 				run_hook_gesture(&hook);
-				headset_echo_until = now + HEADSET_ECHO_MS;
 			}
 
 			// No second click: the double-click button's own action.
@@ -1995,10 +1991,15 @@ static void *input_thread_func(void *arg) {
 				}
 				if (seeking && seek_started) {
 					// From here the release has nothing left to do: the press
-					// became a seek and must not also change track. The deadline
-					// is armed once, on the first step, not on every repeat.
-					if (!seeked) {
-						seek_deadline = now + SEEK_DEADLINE_MS;
+					// became a seek and must not also change track. A headset's
+					// 200 ms value-1 stream is evidence the key is still down,
+					// so its deadline is re-armed and only a lost release fires
+					// it. A case button repeats on this thread's timer, which is
+					// not evidence about the physical key: it gets one long cap.
+					if (info->headset) {
+						seek_deadline = now + SEEK_DEADLINE_HEADSET_MS;
+					} else if (!seeked) {
+						seek_deadline = now + SEEK_DEADLINE_BUTTON_MS;
 					}
 					seeked = true;
 					held_repeated = true;
@@ -2061,14 +2062,6 @@ static void *input_thread_func(void *arg) {
 		if (ev.value == 1) {
 			power_notify_activity(); // any physical button counts as use
 
-			// The driver that counts the cable remote's clicks sends its own
-			// code after the app has already acted on the gesture. A click code
-			// arriving inside that window is the echo, not a second gesture.
-			if (info->headset && headset_click_code(ev.code) &&
-				(int32_t)(now_ms() - headset_echo_until) < 0) {
-				continue;
-			}
-
 			// The headset hold codes are a seek from the moment they arrive:
 			// the driver has already waited its 500 ms, so there is no hold
 			// threshold to wait out here. Intercepted before the generic press
@@ -2076,7 +2069,10 @@ static void *input_thread_func(void *arg) {
 			if (info->headset && (ev.code == KEY_FASTFORWARD || ev.code == KEY_REWIND)) {
 				hook_clicks_cancel(&hook); // a hold is not a click sequence
 				if (ev.code == headset_hold_consumed) {
-					continue; // this physical hold already committed at the deadline
+					if ((int32_t)(now_ms() - headset_hold_consumed_until) < 0) {
+						continue; // this physical hold already committed at the deadline
+					}
+					headset_hold_consumed = -1; // the release was lost; this is a new press
 				}
 				if (held == ev.code) {
 					continue; // the driver's 200 ms repeat: still held
@@ -2091,7 +2087,7 @@ static void *input_thread_func(void *arg) {
 					seeked = true;
 					held_repeated = true;
 					next_repeat = now_ms() + SEEK_REPEAT_MS;
-					seek_deadline = now_ms() + SEEK_DEADLINE_MS;
+					seek_deadline = now_ms() + SEEK_DEADLINE_HEADSET_MS;
 					printf("input: %s headset hold %d -> %s\n", node, ev.code,
 						   seekpolicy_headset_forward(ev.code) ? "forward" : "back");
 				} else {
@@ -2102,9 +2098,11 @@ static void *input_thread_func(void *arg) {
 				continue;
 			}
 
-			// A repeat of the key that is already down: a driver echo of a
-			// press, or a second value-1 for a held key.
-			if (ev.code == held) {
+			// A repeat of the key that is already down. Only the headset driver
+			// re-sends value=1 while a key is held; a case button repeats on
+			// this thread's timer, so swallowing here would drop a real press
+			// after a lost release.
+			if (info->headset && ev.code == held) {
 				continue;
 			}
 
@@ -2179,7 +2177,7 @@ static void *input_thread_func(void *arg) {
 					seeked = true;
 					held_repeated = true;
 					next_repeat = now_ms() + SEEK_REPEAT_MS;
-					seek_deadline = now_ms() + SEEK_DEADLINE_MS;
+					seek_deadline = now_ms() + SEEK_DEADLINE_BUTTON_MS;
 				}
 			} else if (!info->headset && ev.code == KEY_VOLUMEDOWN && key_lock_gesture_armed()) {
 				// Possibly the first half of the lock gesture, with power to
@@ -2196,12 +2194,8 @@ static void *input_thread_func(void *arg) {
 					// The driver counted this one itself: the pending count is
 					// thrown away so one gesture is never counted twice.
 					hook_clicks_cancel(&hook);
-					if (info->headset) {
-						headset_echo_until = now_ms() + HEADSET_ECHO_MS;
-					}
 				} else if (hook_clicks_pending(&hook)) {
 					run_hook_gesture(&hook);
-					headset_echo_until = now_ms() + HEADSET_ECHO_MS;
 				}
 				handle_key_press(node, ev.code, info->headset);
 			}
@@ -2214,6 +2208,7 @@ static void *input_thread_func(void *arg) {
 				// there is nothing left to seek, and the next press is a new
 				// gesture.
 				headset_hold_consumed = -1;
+				headset_hold_consumed_until = 0;
 				continue;
 			}
 			bool combo = !info->headset && combo_release(ev.code);

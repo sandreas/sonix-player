@@ -30,7 +30,8 @@ the `sonix_player.log` lines around each gesture. Tick nothing that was not run.
 - [ ] Three clicks: previous chapter/track with the three-second rule.
 - [ ] Plain hold (driver FF): rewinds; no play/pause; one commit on release.
 - [ ] Click then hold (driver REW): fast-forwards; no play/pause; one commit.
-- [ ] Hold longer than 10 s: one commit at the deadline, no second commit on release.
+- [ ] Hold longer than 10 s: keeps seeking, one commit on release, no second commit.
+- [ ] Two single clicks 700 ms apart: both play/pause (`tests/input/headset-two-gestures.txt`).
 - [ ] Unplug mid-hold: the open scrub commits and the UI does not freeze.
 - [ ] Paused/stopped/live: no state change, no start.
 

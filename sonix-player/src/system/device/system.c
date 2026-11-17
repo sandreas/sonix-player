@@ -1760,12 +1760,15 @@ static void handle_key_press(const char *node, int code, bool headset) {
 	// Only the cable remote reaches here: the side buttons were translated and
 	// dispatched above. On a remote next is next -- the upper/lower swap
 	// compensates for the buttons on the case, and there are none here.
+	//
+	// A headset's next/prev go to the chapter keys: the player turns them into
+	// a track change when no book is loaded. A remote's stay the plain pair.
 	case KEY_NEXTSONG:
-		gui_notify_key(GUI_KEY_NEXT);
+		gui_notify_key(headset ? GUI_KEY_NEXT_CHAPTER : GUI_KEY_NEXT);
 		break;
 
 	case KEY_PREVIOUSSONG:
-		gui_notify_key(GUI_KEY_PREV);
+		gui_notify_key(headset ? GUI_KEY_PREV_CHAPTER : GUI_KEY_PREV);
 		break;
 
 	default:
@@ -1816,10 +1819,10 @@ static void run_hook_gesture(hook_clicks_t *clicks) {
 		gui_notify_key(GUI_KEY_PLAY_PAUSE);
 		break;
 	case HOOK_GESTURE_NEXT:
-		gui_notify_key(GUI_KEY_NEXT);
+		gui_notify_key(GUI_KEY_NEXT_CHAPTER);
 		break;
 	case HOOK_GESTURE_PREV:
-		gui_notify_key(GUI_KEY_PREV);
+		gui_notify_key(GUI_KEY_PREV_CHAPTER);
 		break;
 	case HOOK_GESTURE_NONE:
 	default:

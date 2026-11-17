@@ -77,31 +77,10 @@ static void part_clicked_cb(lv_event_t *e) {
 	}
 
 	int index = (int)(intptr_t)lv_event_get_user_data(e);
-	int count = audiobook_part_count();
-	if (index < 0 || index >= count) {
+	if (!player_play_audiobook_part(index)) {
 		return;
 	}
-	char **paths = calloc((size_t)count, sizeof(char *));
-	if (!paths) {
-		return;
-	}
-	int filled = 0;
-	for (int i = 0; i < count; i++) {
-		char path[512];
-		if (!audiobook_part(i, NULL, 0, path, sizeof(path)) || !(paths[filled] = strdup(path))) {
-			break;
-		}
-		filled++;
-	}
-	if (filled == count) {
-		device_state_play_list_ordered((const char *const *)paths, count, index);
-	}
-	for (int i = 0; i < filled; i++) {
-		free(paths[i]);
-	}
-	free(paths);
 
-	player_refresh_now_playing();
 	back_btn_cb(NULL);
 }
 

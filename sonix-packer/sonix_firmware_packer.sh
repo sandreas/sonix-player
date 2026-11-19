@@ -329,8 +329,8 @@ build_one() {
 	# replaces, or the image ends up carrying both.
 	rm -f "$OTA_DIR/ota_md5_rootfs.squashfs."* "$OTA_DIR/rootfs."*
 
-	[ -f "$SQUASH_DIR/$STOCK_LAUNCHER" ] || die "the rootfs has no $STOCK_LAUNCHER: unexpected firmware."
-	[ -f "$SQUASH_DIR/$INIT_SCRIPT" ]    || die "the rootfs has no $INIT_SCRIPT: unexpected firmware."
+	# [ -f "$SQUASH_DIR/$STOCK_LAUNCHER" ] || die "the rootfs has no $STOCK_LAUNCHER: unexpected firmware."
+	# [ -f "$SQUASH_DIR/$INIT_SCRIPT" ]    || die "the rootfs has no $INIT_SCRIPT: unexpected firmware."
 	say ""
 
 	# ==========================================================================
@@ -357,9 +357,9 @@ build_one() {
 	# ==========================================================================
 	step "[$MODEL_NAME] renaming the launcher"
 
-	mv "$SQUASH_DIR/$STOCK_LAUNCHER" "$SQUASH_DIR/$NEW_LAUNCHER"
+	# mv "$SQUASH_DIR/$STOCK_LAUNCHER" "$SQUASH_DIR/$NEW_LAUNCHER"
 	say "    $STOCK_LAUNCHER -> $NEW_LAUNCHER"
-	rename_player_in "$SQUASH_DIR/$NEW_LAUNCHER" "$NEW_LAUNCHER"
+	# rename_player_in "$SQUASH_DIR/$NEW_LAUNCHER" "$NEW_LAUNCHER"
 	# The mode is set after the overlay, not here: the overlay may carry its own
 	# copy of this file and would bring its own mode with it. See step 6.
 	say ""

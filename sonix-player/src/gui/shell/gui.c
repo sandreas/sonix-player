@@ -65,6 +65,7 @@
 #include "src/gui/audio/metronomepage.h"
 #include "src/system/bluetooth/btreceiver.h"
 #include "src/system/audio/usbdac.h"
+#include "src/system/audio/metronome.h"
 #include "src/system/net/wifitransfer.h"
 #include "src/system/streaming/radio.h"
 #include "src/gui/streaming/radiopage.h"
@@ -501,6 +502,13 @@ static void modal_init(gui_config_t *cfg) {
 
 // --- notifications from the button threads ---
 
+// The output belongs to something other than local playback, so a scrub would
+// move a position nobody is going to hear. The input thread asks this before it
+// starts one; receiver and DLNA ownership are its own checks.
+bool gui_seek_allowed(void) {
+	return !usbdac_is_active() && !wifitransfer_running() && !metronome_running();
+}
+
 static void key_async_cb(void *user_data) {
 	gui_key_t key = (gui_key_t)(uintptr_t)user_data;
 
@@ -537,6 +545,16 @@ static void key_async_cb(void *user_data) {
 			return;
 		}
 		break;
+	case GUI_KEY_NEXT_CHAPTER:
+		if (btreceiver_key(BTRECEIVER_NEXT)) {
+			return;
+		}
+		break;
+	case GUI_KEY_PREV_CHAPTER:
+		if (btreceiver_key(BTRECEIVER_PREV)) {
+			return;
+		}
+		break;
 	}
 
 	switch (key) {
@@ -548,6 +566,12 @@ static void key_async_cb(void *user_data) {
 		break;
 	case GUI_KEY_PREV:
 		player_key_prev();
+		break;
+	case GUI_KEY_NEXT_CHAPTER:
+		player_key_next_chapter();
+		break;
+	case GUI_KEY_PREV_CHAPTER:
+		player_key_prev_chapter();
 		break;
 	}
 }

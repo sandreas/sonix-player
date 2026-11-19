@@ -17,8 +17,8 @@
 // The module does the rest itself, counting clicks on the centre button the way
 // the Apple remote it is named after does: one = KEY_PLAYPAUSE (164), two =
 // KEY_NEXTSONG (163), three or more = KEY_PREVIOUSSONG (165). Held down it also
-// emits KEY_FASTFORWARD and KEY_REWIND, which neither the stock firmware nor
-// this one acts on.
+// emits KEY_FASTFORWARD and KEY_REWIND; the player turns those into a seek
+// through the current item (see system.c).
 //
 // The module starts OFF: `gi_earpods_adc_sw` lives in .bss and is zero until
 // something writes "on" to its sysfs attribute. The stock binary does exactly

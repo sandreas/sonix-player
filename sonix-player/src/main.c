@@ -1107,9 +1107,12 @@ static lv_display_t *host_display;
 static const struct {
 	SDL_Keycode key;
 	int code;
+	bool headset;
 } HOST_BUTTONS[] = {
-	{SDLK_p, KEY_POWER},		{SDLK_u, KEY_VOLUMEUP},		{SDLK_i, KEY_VOLUMEDOWN},
-	{SDLK_b, KEY_NEXTSONG},		{SDLK_n, KEY_PLAYPAUSE},	{SDLK_m, KEY_PREVIOUSSONG},
+	{SDLK_p, KEY_POWER, false},		  {SDLK_u, KEY_VOLUMEUP, false},   {SDLK_i, KEY_VOLUMEDOWN, false},
+	{SDLK_b, KEY_NEXTSONG, false},	  {SDLK_n, KEY_PLAYPAUSE, false},  {SDLK_m, KEY_PREVIOUSSONG, false},
+	{SDLK_h, KEY_PLAYPAUSE, true},	  {SDLK_j, KEY_NEXTSONG, true},	   {SDLK_k, KEY_PREVIOUSSONG, true},
+	{SDLK_r, KEY_REWIND, true},		  {SDLK_f, KEY_FASTFORWARD, true},
 };
 
 static int host_key_watch(void *userdata, SDL_Event *event) {
@@ -1122,7 +1125,11 @@ static int host_key_watch(void *userdata, SDL_Event *event) {
 	}
 	for (size_t i = 0; i < sizeof(HOST_BUTTONS) / sizeof(HOST_BUTTONS[0]); i++) {
 		if (HOST_BUTTONS[i].key == event->key.keysym.sym) {
-			input_host_button(HOST_BUTTONS[i].code, event->type == SDL_KEYDOWN);
+			if (HOST_BUTTONS[i].headset) {
+				input_host_headset_button(HOST_BUTTONS[i].code, event->type == SDL_KEYDOWN);
+			} else {
+				input_host_button(HOST_BUTTONS[i].code, event->type == SDL_KEYDOWN);
+			}
 			break;
 		}
 	}
@@ -1165,6 +1172,7 @@ static lv_display_t *init_host_display(void) {
 
 	SDL_AddEventWatch(host_key_watch, NULL);
 	fprintf(stderr, "input: keyboard buttons -- p power, u vol+, i vol-, b prev, n play/pause, m next\n");
+	fprintf(stderr, "input: headset -- h play/pause, j next, k previous, r rewind, f fast-forward\n");
 
 	return disp;
 }

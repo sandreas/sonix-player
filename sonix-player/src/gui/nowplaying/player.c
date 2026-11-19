@@ -27,6 +27,8 @@
 #include "src/gui/shell/toast.h"
 #include "src/gui/shell/topbar.h"
 #include "src/system/device/power.h"
+#include "src/system/device/system.h"
+#include "src/system/input/keymap.h"
 #include "src/system/playback/sleeptimer.h"
 #include "src/system/gearboy/gearboy.h"
 #include "src/system/streaming/radio.h"
@@ -498,6 +500,16 @@ static void apply_live_mode(bool live) {
 	}
 }
 
+// The pair of jump sizes the hold gestures use, from what is playing: a book
+// and a podcast each have their own setting, everything else the keymap's.
+// Shared by apply_audiobook_mode() and player_apply_seek_steps() so the two
+// cannot drift apart.
+static void seek_steps_for(bool book, bool podcast, int *back, int *forward) {
+	int music = keymap_seek_step();
+	*back = book || podcast ? (podcast && !book ? podcast_skip_back() : audiobook_skip_back()) : music;
+	*forward = book || podcast ? (podcast && !book ? podcast_skip_forward() : audiobook_skip_forward()) : music;
+}
+
 // Dresses the player for a book or for a track. Cheap and idempotent, like
 // apply_live_mode(): called from every now-playing refresh and from the poll,
 // and does nothing at all unless the answer changed.
@@ -515,8 +527,12 @@ static void apply_audiobook_mode(bool book, bool podcast) {
 	// podcast has no chapters, is not a single file, and sits in a real queue
 	// of episodes. Chapters and the book icon stay with books.
 	bool skips = book || podcast;
-	int back = podcast && !book ? podcast_skip_back() : audiobook_skip_back();
-	int forward = podcast && !book ? podcast_skip_forward() : audiobook_skip_forward();
+	int back;
+	int forward;
+	seek_steps_for(book, podcast, &back, &forward);
+	// Pushed before the early return: a changed skip setting has to reach the
+	// input thread on the next poll even when the mode itself did not change.
+	input_set_seek_steps(back, forward);
 
 	if (audiobook_mode_valid && book == audiobook_mode && podcast == podcast_mode &&
 		chapters == audiobook_has_chapters && back == audiobook_skip_shown_back &&
@@ -594,6 +610,16 @@ static void apply_audiobook_mode(bool book, bool podcast) {
 		const lv_image_dsc_t *mark = book ? &icon_book_headphones : podcast ? &icon_podcast_cover : &icon_music_note;
 		lv_image_set_src(cover_placeholder_icon, mark);
 	}
+}
+
+// The same pair again, from the mode the player is in now. The settings page
+// calls this after changing a skip or seek setting, so the hold gestures use
+// the new value at once rather than at the next poll.
+void player_apply_seek_steps(void) {
+	int back;
+	int forward;
+	seek_steps_for(audiobook_mode, podcast_mode, &back, &forward);
+	input_set_seek_steps(back, forward);
 }
 
 // ---------------------------------------------------------------------------
@@ -4439,6 +4465,150 @@ void player_key_prev(void) {
 		device_state_seek(0);
 	}
 	update_progress();
+}
+
+// Starts part `index` of the folder book from its beginning, with the book's
+// parts as the ordered queue again, whatever the queue had become. The parts
+// are read afresh rather than remembered, so a book whose files changed on the
+// card is not played from a stale copy. Refreshes the player on success.
+bool player_play_audiobook_part(int index) {
+	int count = audiobook_part_count();
+	if (index < 0 || index >= count) {
+		return false;
+	}
+	// A part change is a chapter jump. A paused book must stay paused, the way
+	// a chapter seek in a single-file book already does; the load below starts
+	// playing, so put it back where it was.
+	bool was_paused = audio_get_status() == AUDIO_STATUS_PAUSED;
+	char **paths = calloc((size_t)count, sizeof(char *));
+	if (!paths) {
+		return false;
+	}
+	int filled = 0;
+	for (int i = 0; i < count; i++) {
+		char path[512];
+		if (!audiobook_part(i, NULL, 0, path, sizeof(path)) || !(paths[filled] = strdup(path))) {
+			break;
+		}
+		filled++;
+	}
+	bool ok = false;
+	if (filled == count) {
+		device_state_play_list_ordered((const char *const *)paths, count, index);
+		ok = true;
+	}
+	for (int i = 0; i < filled; i++) {
+		free(paths[i]);
+	}
+	free(paths);
+	if (ok) {
+		if (was_paused && audio_get_status() == AUDIO_STATUS_PLAYING) {
+			device_state_toggle_play_pause();
+		}
+		player_refresh_now_playing();
+	}
+	return ok;
+}
+
+// The headset's skip while a book is loaded. Next and previous mean chapter
+// (or, for a folder book, part) rather than track; a podcast and everything
+// else keep the plain previous/next, which already covers the radio, DLNA and
+// the music queue.
+void player_key_next_chapter(void) {
+	if (!audiobook_mode || dlna_owns_playback()) {
+		player_key_next();
+		return;
+	}
+
+	// A folder book lists its files as chapters, so parts come first -- the
+	// same order the chapter list itself uses.
+	if (audiobook_part_count() > 1) {
+		if (!player_play_audiobook_part(audiobook_part_current() + 1)) {
+			// The last part: no next file to start, so the press is the
+			// ordinary forward jump, as it is at the last chapter.
+			device_state_t state;
+			device_state_get(&state);
+			audiobook_seek_by((double)audiobook_skip_forward(), &state);
+		}
+		update_progress();
+		return;
+	}
+
+	if (audiobook_chapter_count() > 0) {
+		device_state_t state;
+		device_state_get(&state);
+		double start = 0;
+		if (audiobook_chapter(audiobook_chapter_at(state.progress_current_secs) + 1, NULL, 0, &start)) {
+			device_state_seek(start);
+			// Written through: a chapter jump is exactly the moment somebody
+			// puts the player down, as the chapter list knows.
+			audiobook_note_position(start, 0, true);
+		} else {
+			// The last chapter: no chapter to go to, so the press is the
+			// ordinary forward jump.
+			audiobook_seek_by((double)audiobook_skip_forward(), &state);
+		}
+		update_progress();
+		return;
+	}
+
+	player_key_next();
+}
+
+void player_key_prev_chapter(void) {
+	if (!audiobook_mode || dlna_owns_playback()) {
+		player_key_prev();
+		return;
+	}
+
+	if (audiobook_part_count() > 1) {
+		device_state_t state;
+		device_state_get(&state);
+		int current = audiobook_part_current();
+		// Past the first three seconds, prev restarts the part it is in --
+		// the same rule the track keys follow. On the first part there is
+		// nowhere back to go, so it restarts there too.
+		if (current <= 0 || state.progress_current_secs > 3.0) {
+			device_state_seek(0);
+			// Written through, as every other chapter/part move does: a power
+			// cut right after would otherwise resume at the old position.
+			audiobook_note_position(0, 0, true);
+		} else {
+			player_play_audiobook_part(current - 1);
+		}
+		update_progress();
+		return;
+	}
+
+	if (audiobook_chapter_count() > 0) {
+		device_state_t state;
+		device_state_get(&state);
+		int index = audiobook_chapter_at(state.progress_current_secs);
+		double start = 0;
+		if (index >= 0) {
+			audiobook_chapter(index, NULL, 0, &start);
+		}
+		if (state.progress_current_secs - start > 3.0) {
+			// Far enough in: back to this chapter's beginning.
+			device_state_seek(start);
+			audiobook_note_position(start, 0, true);
+		} else {
+			// At (or nearly at) the beginning: the previous chapter, or the
+			// beginning of the book when this is the first.
+			double prev = 0;
+			if (audiobook_chapter(index - 1, NULL, 0, &prev)) {
+				device_state_seek(prev);
+				audiobook_note_position(prev, 0, true);
+			} else {
+				device_state_seek(0);
+				audiobook_note_position(0, 0, true);
+			}
+		}
+		update_progress();
+		return;
+	}
+
+	player_key_prev();
 }
 
 // The book's menu. A book with no chapters still lists them, and says so when

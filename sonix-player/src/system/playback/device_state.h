@@ -196,6 +196,9 @@ void device_state_read_ahead(double position, double total);
 // change: a position picked on one track means nothing on the next.
 void device_state_scrub_by(double delta);
 void device_state_scrub_commit(void);
+// The input thread calls this when a node disappears or a mode change
+// abandons a hold: discards any open scrub without performing the seek.
+void device_state_scrub_cancel(void);
 bool device_state_scrub_active(double *position_out);
 void device_state_stop(void);
 

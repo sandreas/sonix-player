@@ -29,6 +29,12 @@ bool hook_clicks_expired(const hook_clicks_t *h, uint32_t now_ms) {
 	return hook_clicks_pending(h) && reached(now_ms, h->due);
 }
 
+bool hook_clicks_should_expire(const hook_clicks_t *h, uint32_t now_ms, bool centre_down) {
+	// A button still held is a hold and belongs to seek; only a release lets
+	// the window run out into a click gesture.
+	return !centre_down && hook_clicks_expired(h, now_ms);
+}
+
 hook_gesture_t hook_clicks_take(hook_clicks_t *h) {
 	if (!hook_clicks_pending(h)) {
 		return HOOK_GESTURE_NONE;

@@ -397,7 +397,45 @@ compile_commands.json:
 	@python3 generate_compile_commands.py
 
 clean:
-	rm -rf build_host build_target build_gen $(HOST_BIN) $(TARGET_BIN) $(TARGET_DEBUG_BIN) $(LAUNCH_BIN) compile_commands.json compile_flags.txt
+	rm -rf build_host build_target build_tests build_gen $(HOST_BIN) $(TARGET_BIN) $(TARGET_DEBUG_BIN) $(LAUNCH_BIN) compile_commands.json compile_flags.txt
+
+# ---------------------------------------------------------------------------
+# Unit tests
+#
+# The pure modules (no LVGL, no device) are built and run on the host, where
+# `make host` cannot reach them: its link pulls in SDL and the audio libraries.
+# Each test is a plain main() that exits non-zero on the first failed check.
+# ---------------------------------------------------------------------------
+
+.PHONY: test
+TEST_CFLAGS = -O2 -g -Wall -Wextra -I.
+TEST_BINS = build_tests/test_seekpolicy build_tests/test_keymap build_tests/test_hookclicks
+
+test: $(TEST_BINS)
+	./build_tests/test_seekpolicy
+	./build_tests/test_keymap
+	./build_tests/test_hookclicks
+	python3 tests/check_language_keys.py
+
+# The headers are prerequisites so that editing one rebuilds the test, but they
+# stay out of the compiler command: clang would build a precompiled header from
+# a .h on the command line, and with -o naming the test binary that fails.
+
+build_tests/test_seekpolicy: tests/test_seekpolicy.c src/system/input/seekpolicy.c src/system/input/seekpolicy.h
+	@mkdir -p build_tests
+	$(CC) $(TEST_CFLAGS) -o $@ $(filter %.c,$^)
+
+build_tests/test_keymap: tests/test_keymap.c src/system/input/keymap.c \
+						 src/system/input/seekpolicy.c src/system/core/config.c \
+						 src/system/input/keymap.h src/system/input/seekpolicy.h \
+						 src/system/core/config.h
+	@mkdir -p build_tests
+	$(CC) $(TEST_CFLAGS) -o $@ $(filter %.c,$^)
+
+build_tests/test_hookclicks: tests/test_hookclicks.c src/system/input/hookclicks.c \
+							 src/system/input/hookclicks.h
+	@mkdir -p build_tests
+	$(CC) $(TEST_CFLAGS) -o $@ $(filter %.c,$^)
 
 # The bundled libraries and their extracted sources. The downloaded tarballs stay.
 .PHONY: libs-clean

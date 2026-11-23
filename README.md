@@ -242,32 +242,23 @@ sitting in memory for the whole session.
 
 ### Persistent dev build from microSD
 
-The purpose is for speeding up development, by avoiding the need to constantly
-repack and reinstall firmwares in order to test each change (while allowing
-the change to persist past reboots).
+Unlock Developer options first: in About, tap **Build number** five times. Then
+copy a binary to the root of a FAT32 microSD card named `sonix_player` and
+reboot. With Developer options locked, the helper skips the card and runs the
+firmware binary; it does not try to mount the card.
 
-With the switch on, every boot mounts the card, copies that file to
+With Developer options on, every boot mounts the card, copies that file to
 `/tmp/sonix_player`, unmounts the card, and runs the copy through
 `sonix_launch` instead of the firmware binary. A patched build stays in place
 across reboots, and a completely custom one can be tried without flashing.
 
-#### To enable it:
-Unlock Developer options first (in About, tap **Build number** five times).
-Then switch on **Run dev build from microSD** in Settings > Developer options.
-The switch creates the flag file `/usr/data/copy-from-sd0`; switching it off
-removes the file. Copy a binary to the root of a FAT32 microSD card named
-`sonix_player` and reboot.
+With no `sonix_player` file on the card, the firmware binary runs as usual.
+Remove or rename the file to revert - no reflash and no recovery mode needed.
+Turning Developer options off has the same effect: the card is skipped.
 
-With the switch off, the card is not mounted at all. With no `sonix_player`
-file on the card, the firmware binary runs as usual. Switching the setting off
-reverts back to the installed `sonix_player`; turning Developer options off
-disarms the override as well, even if the flag file is still present. Youg can
-also remove or rename the file to revert - no reflash and no recovery mode
-needed.
-
-Any binary named `sonix_player` at the root of the SD card is accepted; nothing
-inspects its size or format. If one fails to run, remove the file from the card
-and the device boots normally again. Works on both the R1 and the R3 Pro II.
+Any binary is accepted; nothing inspects its size or format. If one fails to
+run, remove the file from the card and the device boots normally again. Works
+on both the R1 and the R3 Pro II.
 
 
 ## Creating the firmware image

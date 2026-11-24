@@ -30,10 +30,12 @@
 #include "src/system/audio/audio.h"
 #include "src/system/audio/alsa-controls.h"
 #include "src/system/playback/device_state.h"
+#include "src/system/playback/audiobook.h"
 #include "src/system/library/audiobookdb.h"
 #include "src/system/audio/eq.h"
 #include "src/system/remote/dlna.h"
 #include "src/system/gearboy/gbdb.h"
+#include "src/system/input/holdpreview.h"
 #include "src/system/input/hookclicks.h"
 #include "src/system/input/keymap.h"
 #include "src/system/core/panel.h"
@@ -1520,8 +1522,40 @@ static bool mapped_action_repeats(keymap_button_t button) {
 // is dropped after this long, so the button is not dead for the session.
 #define HEADSET_HOLD_CONSUMED_MS 5000
 
+// A held preview steps back by the cached interval, plays this long, then
+// steps again. The period allows for the flush and refill after a real seek;
+// the R1 log is what decides whether 950 ms actually gives 850 ms of sound.
+#define PREVIEW_PLAY_MS 850
+#define PREVIEW_PERIOD_MS 950
+
 static double seek_seconds(bool forward) {
 	return (double)(forward ? seek_forward_seconds : seek_back_seconds);
+}
+
+static seek_status_t preview_status(void) {
+	audio_status_t status = audio_get_status();
+	if (status == AUDIO_STATUS_PLAYING) {
+		return SEEK_STATUS_PLAYING;
+	}
+	if (status == AUDIO_STATUS_PAUSED) {
+		return SEEK_STATUS_PAUSED;
+	}
+	return SEEK_STATUS_STOPPED;
+}
+
+// The same note rule as device_state_scrub_commit(): a seek that landed on a
+// book or podcast moves the position the state keeper has written down.
+static void preview_note(const char *file, double pos, double total) {
+	device_state_t state;
+	device_state_get(&state);
+	if (strcmp(file, state.current_file) != 0) {
+		return;
+	}
+	if (audiobook_is_playing()) {
+		audiobook_note_position(pos, total, true);
+	} else if (podcastcache_is_episode(file)) {
+		podcaststate_note(file, pos, total, true);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1648,8 +1682,8 @@ static bool seek_headset_step(int code) {
 
 	bool forward = seekpolicy_headset_forward(code);
 	double step = seek_seconds(forward);
-	device_state_scrub_by(forward ? step : -step);
-	bool started = device_state_scrub_active(NULL);
+	bool started = holdpreview_begin(step, forward, state.live, state.progress_total_secs,
+									 state.progress_current_secs, state.current_file);
 	if (!started) {
 		printf("input: headset seek refused (no local transport or no length)\n");
 	}
@@ -1950,7 +1984,11 @@ static void *input_thread_func(void *arg) {
 					headset_hold_consumed = held;
 					headset_hold_consumed_until = now + HEADSET_HOLD_CONSUMED_MS;
 				}
-				device_state_scrub_commit();
+				if (holdpreview_active()) {
+					holdpreview_end();
+				} else {
+					device_state_scrub_commit();
+				}
 				seeked = false;
 				held_repeated = false;
 				deferred = false;
@@ -1985,9 +2023,29 @@ static void *input_thread_func(void *arg) {
 					continue;
 				}
 				bool seeking = key_seeks_held(held, info->headset);
+				bool previewing = info->headset && holdpreview_active();
 				bool seek_started = false;
 				if (!suppressed) {
-					seek_started = repeat_held(held, info->headset);
+					if (previewing) {
+						device_state_t state;
+						device_state_get(&state);
+						bool forward = seekpolicy_headset_forward(held);
+						seek_started = holdpreview_step(seek_seconds(forward), forward, state.live,
+														state.progress_total_secs, state.progress_current_secs,
+														state.current_file);
+						if (!seek_started) {
+							// The preview noted its last position on the way out;
+							// the release must not seek or note again.
+							holdpreview_cancel();
+							seeked = false;
+							held_repeated = false;
+							deferred = false;
+							seek_deadline = 0;
+							held = -1;
+						}
+					} else {
+						seek_started = repeat_held(held, info->headset);
+					}
 				}
 				if (seeking && seek_started) {
 					// From here the release has nothing left to do: the press
@@ -2009,7 +2067,8 @@ static void *input_thread_func(void *arg) {
 				}
 				// A seek that refused (live stream, stopped, no length) leaves
 				// both flags clear, so the release runs the ordinary action.
-				next_repeat = now + (seeking ? SEEK_REPEAT_MS : VOLUME_REPEAT_PERIOD_MS);
+				next_repeat = now + (previewing ? PREVIEW_PERIOD_MS :
+									 (seeking ? SEEK_REPEAT_MS : VOLUME_REPEAT_PERIOD_MS));
 			} else if (held == KEY_POWER && !long_press_done &&
 					   (int32_t)(now - (held_since + POWER_LONG_PRESS_MS)) >= 0) {
 				long_press_done = true;
@@ -2117,7 +2176,11 @@ static void *input_thread_func(void *arg) {
 			// another key went down first and took `held` with it -- is closed
 			// here rather than left to freeze the position for good.
 			if (seeked) {
-				device_state_scrub_commit();
+				if (holdpreview_active()) {
+					holdpreview_cancel();
+				} else {
+					device_state_scrub_commit();
+				}
 			}
 
 			// A first click waiting: this press is its second click, or it
@@ -2239,7 +2302,11 @@ static void *input_thread_func(void *arg) {
 					if (info->headset) {
 						printf("input: %s headset hold end\n", node);
 					}
-					device_state_scrub_commit();
+					if (holdpreview_active()) {
+						holdpreview_end();
+					} else {
+						device_state_scrub_commit();
+					}
 				}
 				held = -1;
 				long_press_done = false;
@@ -2256,7 +2323,11 @@ static void *input_thread_func(void *arg) {
 	// A node that disappears mid-hold (the headset unplugged) has no release to
 	// commit the scrub, and no reader to wait out the click window.
 	if (seeked) {
-		device_state_scrub_commit();
+		if (holdpreview_active()) {
+			holdpreview_cancel();
+		} else {
+			device_state_scrub_commit();
+		}
 	}
 	if (hook_clicks_pending(&hook)) {
 		hook_clicks_cancel(&hook);
@@ -2968,6 +3039,14 @@ void system_start_services(system_config_t *cfg, system_notification_cb_t notifi
 	}
 
 	log_input_devices();
+
+	holdpreview_ops_t preview_ops = {
+		.allowed = local_seek_allowed,
+		.status = preview_status,
+		.seek = device_state_seek_hold,
+		.note = preview_note,
+	};
+	holdpreview_init(&preview_ops);
 
 #ifdef HOST_BUILD
 	start_host_input_thread();

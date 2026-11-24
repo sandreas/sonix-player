@@ -1,5 +1,6 @@
 #include "device_state.h"
 
+#include "src/system/input/holdpreview.h"
 #include "src/system/input/seekpolicy.h"
 #include "src/system/audio/alsa-controls.h"
 #include "src/system/audio/audio.h"
@@ -1577,10 +1578,15 @@ static seek_status_t seek_status(audio_status_t status) {
 	return SEEK_STATUS_STOPPED;
 }
 
-static void scrub_cancel(void) {
+static void scrub_cancel_only(void) {
 	pthread_mutex_lock(&scrub_lock);
 	scrubbing = false;
 	pthread_mutex_unlock(&scrub_lock);
+}
+
+static void scrub_cancel(void) {
+	holdpreview_cancel();
+	scrub_cancel_only();
 }
 
 // The settings page calls this when a mode change abandons a hold: the scrub
@@ -1686,6 +1692,11 @@ void device_state_seek(double seconds) {
 		history_same_listen = true;
 		load_and_play(current_metadata_file);
 	}
+	audio_seek(seconds);
+}
+
+void device_state_seek_hold(double seconds) {
+	scrub_cancel_only();
 	audio_seek(seconds);
 }
 

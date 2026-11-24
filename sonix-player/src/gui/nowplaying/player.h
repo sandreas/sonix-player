@@ -93,6 +93,21 @@ void player_key_play_pause(void);
 void player_key_next(void);
 void player_key_prev(void);
 
+// The headset's skip gestures while a book is loaded: the same two presses,
+// but they move by chapter (or by folder-book part) instead of by track.
+// Everything else falls through to the plain previous/next.
+void player_key_next_chapter(void);
+void player_key_prev_chapter(void);
+
+// Starts part `index` of the folder book being played, with the book's parts
+// as the ordered queue again. False when the index is out of range or the
+// queue could not be rebuilt.
+bool player_play_audiobook_part(int index);
+
+// Pushes the seek intervals that match what is playing to the input thread,
+// so a changed setting reaches the hold gestures without waiting for a poll.
+void player_apply_seek_steps(void);
+
 // What the player's on-screen prev/next buttons do: seconds-sized skips on an
 // audiobook or podcast, previous/next track otherwise. The control centre
 // calls these so that it behaves exactly like the player.

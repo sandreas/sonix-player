@@ -115,6 +115,7 @@ This is everything Sonix Player can do today, on both the **R1** and the **R3 Pr
 - **Heard and to hear** - filter the episodes and mark them as heard or not. An episode counts as heard when you stop in its last 30 seconds, 1 minute or 2 minutes (you choose).
 - **Play next**, delete downloaded episodes, newest or oldest first.
 - **Speed** and **stop at the end of the episode**.
+- **Skip buttons** - choose how far back and forward they jump: 10, 30 or 60 seconds.
 - **OPML** - import the podcasts you follow in another app, and export yours.
   > Put the `.opml` file in the root of the card or in the `Podcast` folder.
 
@@ -126,7 +127,7 @@ This is everything Sonix Player can do today, on both the **R1** and the **R3 Pr
 - **A book can be one file or a whole folder** - an `.m4b`, an `.mp3` or any other file with chapters, or a folder of files (with `CD 1`, `Disc 2` subfolders too).
 - **Chapters** are read from the file, and the position is remembered for every book.
 - **Speed** from 0.5x to 2.0x without changing the pitch.
-- **Skip buttons** - choose how far back and forward they jump: 10, 30 or 60 seconds.
+- **Skip buttons** - choose how far back and forward they jump: 10, 30 or 60 seconds. The same sizes are used when a physical skip button is held, or when the wired headset's hold code seeks.
 - **Rewind after pause** by a few seconds, so you don't lose the thread.
 - **Stop at the end of the chapter**.
 - **Bookmarks** (up to 64 per book) and the **summary** from the tags.
@@ -174,10 +175,11 @@ This is everything Sonix Player can do today, on both the **R1** and the **R3 Pr
 
 - **Remap buttons** - give each media and volume button another action.
 - **Double click** - two quick presses of a button do the action you choose.
-- **In-line remote** - on wired headphones: one click play/pause, two clicks next, three clicks previous. USB-C headphones with buttons work too.
+- **Skip buttons** - choose **Track change** (a short press changes track, holding seeks) or **Seek** (a short press seeks, holding repeats; on the R1, holding play rewinds). **Seek step** sets the music jump to 10, 30 or 60 seconds; books and podcasts use their own skip sizes.
+- **In-line remote** - on wired headphones: one click play/pause, two clicks next chapter or track, three clicks previous, hold rewind, click then hold fast-forward. USB-C headphones with buttons work too.
 - **Lock the buttons** with the screen off: volume down + power. The power button and the remote always work.
 - **Keyboard** - eleven layouts (English, Italian, German, Spanish, French, Dutch, Polish, Brazilian Portuguese, Czech, Russian, Japanese), as a full keyboard or as a phone keypad (T9). Japanese types romaji as hiragana or katakana, has a ten-key kana pad (tap a key again, or flick it, for the next kana of its row) and offers kanji candidates for the hiragana before the caret.
-- **Screenshots** - turn them on in Settings > More, then press volume up + power to save the screen to the card.
+- **Screenshots** - turn them on in Settings > Buttons, then press volume up + power to save the screen to the card.
 
 ## Screen and appearance
 

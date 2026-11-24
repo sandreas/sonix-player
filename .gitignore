@@ -7,6 +7,7 @@ sonix-player/sonix_launch
 
 sonix-player/build_target
 sonix-player/build_host
+sonix-player/build_tests
 sonix-player/build_gen
 
 # The streaming keys: in the clear, the key that seals them, and the sealed

@@ -48,8 +48,15 @@ bool hook_clicks_pending(const hook_clicks_t *h);
 // poll() deadline is built from.
 int hook_clicks_timeout(const hook_clicks_t *h, uint32_t now_ms);
 
-// True once no further click can join the ones already counted.
+// True once no further click can join the ones already counted. The input
+// thread asks hook_clicks_should_expire instead: a centre button still held is
+// not a click yet.
 bool hook_clicks_expired(const hook_clicks_t *h, uint32_t now_ms);
+
+// True when the counted clicks should become a gesture now. A centre button
+// still down is a hold, not a click: expiring there would turn a seek into a
+// pause while the finger is still on the button.
+bool hook_clicks_should_expire(const hook_clicks_t *h, uint32_t now_ms, bool centre_down);
 
 // The gesture the counted clicks add up to, and the counter goes back to idle.
 // HOOK_GESTURE_NONE when there was nothing to take.

@@ -1,0 +1,7 @@
+# Two single clicks 700 ms apart. The removed 500 ms echo latch swallowed the
+# second gesture; each click must now reach the hook and play/pause once.
+0 164 1 1
+60 164 0 1
+
+700 164 1 1
+760 164 0 1

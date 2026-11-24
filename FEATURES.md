@@ -184,7 +184,7 @@ This is everything Sonix Player can do today, on both the **R1** and the **R3 Pr
 - **Remap buttons** - give each media and volume button another action.
 - **Double click** - two quick presses of a button do the action you choose.
 - **Skip buttons** - choose **Track change** (a short press changes track, holding seeks) or **Seek** (a short press seeks, holding repeats; on the R1, holding play rewinds). **Seek step** sets the music jump to 10, 30 or 60 seconds; books and podcasts use their own skip sizes.
-- **In-line remote** - on wired headphones: one click play/pause, two clicks next chapter or track, three clicks previous, hold rewind, click then hold fast-forward. USB-C headphones with buttons work too.
+- **In-line remote** - on wired headphones: one click play/pause, two clicks next chapter or track, three clicks previous, hold rewind, click then hold fast-forward. USB-C headphones with buttons work too. A hold steps 10 seconds and plays about 850 ms from each new point so you can hear where you are in a book; case buttons and gesture parity are not part of this.
 - **Lock the buttons** with the screen off: volume down + power. The power button and the remote always work.
 - **Keyboard** - eleven layouts (English, Italian, German, Spanish, French, Dutch, Polish, Brazilian Portuguese, Czech, Russian, Japanese), as a full keyboard or as a phone keypad (T9). Japanese types romaji as hiragana or katakana, has a ten-key kana pad (tap a key again, or flick it, for the next kana of its row) and offers kanji candidates for the hiragana before the caret.
 - **Screenshots** - turn them on in Settings > Buttons, then press volume up + power to save the screen to the card.

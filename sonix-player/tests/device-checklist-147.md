@@ -40,3 +40,16 @@ the `sonix_player.log` lines around each gesture. Tick nothing that was not run.
 - [ ] Volume repeat, double-click, power long-press, key lock.
 - [ ] USB DAC, Wi-Fi transfer and metronome: no seek.
 - [ ] All 24 language files load and show the new strings.
+
+## Audible hold preview (R1, headphones, screen off)
+
+- [ ] Plain hold rewinds in 10 s steps and plays about 850 ms from each new point.
+- [ ] Click then hold fast-forwards in 10 s steps with the same audible excerpts.
+- [ ] Release makes no extra jump; the position note survives a restart.
+- [ ] `lost-release deadline`: the 10 s deadline writes the position and leaves no active preview.
+- [ ] `unplug mid-hold`: the preview clears, no extra seek, the interface does not freeze.
+- [ ] `external seek cancels preview`: a slider or queue seek during a hold is not overwritten by the next step.
+- [ ] `end of book during hold`: playback does not restart on a stopped track and no seek lands on the wrong file.
+- [ ] A hold started while paused keeps the old scrub; no silent sequence of real seeks.
+- [ ] A hold on a stopped player does nothing.
+- [ ] Bluetooth receiver, DLNA, USB DAC, Wi-Fi transfer, metronome and live streams: no preview.

@@ -1558,6 +1558,13 @@ static void preview_note(const char *file, double pos, double total) {
 	}
 }
 
+// One line per step gives the R1 pass a cadence to measure. The play window is
+// logged too, so a log can say whether 950 ms was enough to hear 850 ms.
+static void log_preview_step(void) {
+	fprintf(stderr, "preview[%ld]: seek to %.2f s, play %d ms\n",
+			(long)now_ms(), holdpreview_position(), PREVIEW_PLAY_MS);
+}
+
 // ---------------------------------------------------------------------------
 // Seek mode
 //
@@ -1682,6 +1689,12 @@ static bool seek_headset_step(int code) {
 
 	bool forward = seekpolicy_headset_forward(code);
 	double step = seek_seconds(forward);
+	// A hold that begins paused keeps the old silent scrub. A real seek would
+	// move the position without any sound, which is the anti-goal here.
+	if (audio_get_status() == AUDIO_STATUS_PAUSED) {
+		device_state_scrub_by(forward ? step : -step);
+		return device_state_scrub_active(NULL);
+	}
 	bool started = holdpreview_begin(step, forward, state.live, state.progress_total_secs,
 									 state.progress_current_secs, state.current_file);
 	if (!started) {
@@ -2033,6 +2046,9 @@ static void *input_thread_func(void *arg) {
 						seek_started = holdpreview_step(seek_seconds(forward), forward, state.live,
 														state.progress_total_secs, state.progress_current_secs,
 														state.current_file);
+						if (seek_started) {
+							log_preview_step();
+						}
 						if (!seek_started) {
 							// The preview noted its last position on the way out;
 							// the release must not seek or note again.
@@ -2145,7 +2161,12 @@ static void *input_thread_func(void *arg) {
 				if (local_seek_allowed() && seek_headset_step(ev.code)) {
 					seeked = true;
 					held_repeated = true;
-					next_repeat = now_ms() + SEEK_REPEAT_MS;
+					// The first excerpt gets the full preview window too; a
+					// 250 ms repeat would cut the very step the listener needs.
+					next_repeat = now_ms() + (holdpreview_active() ? PREVIEW_PERIOD_MS : SEEK_REPEAT_MS);
+					if (holdpreview_active()) {
+						log_preview_step();
+					}
 					seek_deadline = now_ms() + SEEK_DEADLINE_HEADSET_MS;
 					printf("input: %s headset hold %d -> %s\n", node, ev.code,
 						   seekpolicy_headset_forward(ev.code) ? "forward" : "back");

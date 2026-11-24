@@ -442,7 +442,7 @@ build_tests/test_holdpreview: tests/test_holdpreview.c src/system/input/holdprev
 							   src/system/input/seekpolicy.c \
 							   src/system/input/holdpreview.h src/system/input/seekpolicy.h
 	@mkdir -p build_tests
-	$(CC) $(TEST_CFLAGS) -o $@ $(filter %.c,$^)
+	$(CC) $(TEST_CFLAGS) -pthread -o $@ $(filter %.c,$^)
 
 # The bundled libraries and their extracted sources. The downloaded tarballs stay.
 .PHONY: libs-clean

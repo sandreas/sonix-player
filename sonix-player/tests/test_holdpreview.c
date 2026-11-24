@@ -125,6 +125,27 @@ static int test_step_with_different_file_notes_original(void) {
     return 0;
 }
 
+static int test_cancel_writes_one_note_without_seek(void) {
+    reset_fakes();
+    EXPECT(holdpreview_begin(10.0, false, false, 600.0, 30.0, "book.flac") == true);
+    holdpreview_cancel();
+    EXPECT(fake_note_calls == 1);
+    EXPECT(fake_seek_calls == 1); /* the begin seek only */
+    EXPECT(holdpreview_active() == false);
+    holdpreview_cancel();
+    EXPECT(fake_note_calls == 1); /* idempotent when already clear */
+    return 0;
+}
+
+static int test_position_reports_last_target(void) {
+    reset_fakes();
+    EXPECT(holdpreview_begin(10.0, false, false, 600.0, 30.0, "book.flac") == true);
+    EXPECT(holdpreview_position() == 20.0);
+    EXPECT(holdpreview_step(10.0, false, false, 600.0, 20.0, "book.flac") == true);
+    EXPECT(holdpreview_position() == 10.0);
+    return 0;
+}
+
 int main(void) {
     int rc = test_target_clamps();
     if (rc != 0) return rc;
@@ -141,6 +162,10 @@ int main(void) {
     rc = test_end_writes_one_note();
     if (rc != 0) return rc;
     rc = test_step_with_different_file_notes_original();
+    if (rc != 0) return rc;
+    rc = test_cancel_writes_one_note_without_seek();
+    if (rc != 0) return rc;
+    rc = test_position_reports_last_target();
     if (rc != 0) return rc;
     puts("test_holdpreview: ok");
     return 0;

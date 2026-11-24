@@ -14,6 +14,7 @@ typedef struct {
 
 void holdpreview_init(const holdpreview_ops_t *ops);
 bool holdpreview_active(void);
+double holdpreview_position(void);
 bool holdpreview_begin(double step, bool forward, bool live, double total, double current, const char *file);
 bool holdpreview_step(double step, bool forward, bool live, double total, double current, const char *file);
 void holdpreview_end(void);

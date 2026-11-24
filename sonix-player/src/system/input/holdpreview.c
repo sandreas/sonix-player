@@ -1,6 +1,7 @@
 #include "src/system/input/holdpreview.h"
 
 #include <stdio.h>
+#include <string.h>
 
 static holdpreview_ops_t ops;
 static bool active;
@@ -31,6 +32,42 @@ bool holdpreview_begin(double step, bool forward, bool live, double total, doubl
 	snprintf(preview_file, sizeof(preview_file), "%s", file);
 	active = true;
 	ops.seek(preview_target);
+	return true;
+}
+
+static void finish_preview(void) {
+	if (!active) {
+		return;
+	}
+	if (ops.note) {
+		ops.note(preview_file, preview_target, preview_total);
+	}
+	active = false;
+}
+
+void holdpreview_end(void) { finish_preview(); }
+void holdpreview_cancel(void) { finish_preview(); }
+
+bool holdpreview_step(double step, bool forward, bool live, double total, double current, const char *file) {
+	if (!active) {
+		return false;
+	}
+
+	seek_status_t status = ops.status ? ops.status() : SEEK_STATUS_STOPPED;
+	if (status != SEEK_STATUS_PLAYING || !ops.allowed || !ops.allowed() ||
+		!seekpolicy_can_start(status, live, total) || !file || strcmp(preview_file, file) != 0) {
+		finish_preview();
+		return false;
+	}
+
+	double target = holdpreview_target(current, step, total, forward);
+	if (target == current) {
+		finish_preview();
+		return false;
+	}
+
+	preview_target = target;
+	ops.seek(target);
 	return true;
 }
 

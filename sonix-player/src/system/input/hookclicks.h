@@ -23,7 +23,7 @@
 
 // Long enough that a deliberate double click lands inside it, short enough that
 // the pause before the music stops is not read as the button being missed.
-#define HOOK_MULTI_CLICK_MS 300
+#define HOOK_MULTI_CLICK_MS 250
 
 typedef enum {
 	HOOK_GESTURE_NONE = 0,

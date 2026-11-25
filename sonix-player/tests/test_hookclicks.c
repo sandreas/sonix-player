@@ -4,16 +4,28 @@
 #define EXPECT(cond) do { if (!(cond)) { \
     fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); return 1; } } while (0)
 
+static int test_single_click_window(void) {
+    hook_clicks_t h = {0};
+    hook_clicks_press(&h, 1000);
+    EXPECT(hook_clicks_timeout(&h, 1000) == 250);
+    EXPECT(!hook_clicks_should_expire(&h, 1249, false));
+    EXPECT(hook_clicks_should_expire(&h, 1250, false));
+    return 0;
+}
+
 int main(void) {
+    int rc = test_single_click_window();
+    if (rc != 0) return rc;
+
     hook_clicks_t h = {0};
     EXPECT(!hook_clicks_should_expire(&h, 1000, false));
 
     hook_clicks_press(&h, 1000);
-    EXPECT(!hook_clicks_should_expire(&h, 1299, false));
-    EXPECT(hook_clicks_should_expire(&h, 1300, false));
-    EXPECT(!hook_clicks_should_expire(&h, 1300, true)); /* still held: no click yet */
+    EXPECT(!hook_clicks_should_expire(&h, 1249, false));
+    EXPECT(hook_clicks_should_expire(&h, 1250, false));
+    EXPECT(!hook_clicks_should_expire(&h, 1250, true)); /* still held: no click yet */
 
-    hook_clicks_press(&h, 1300);
+    hook_clicks_press(&h, 1250);
     EXPECT(hook_clicks_take(&h) == HOOK_GESTURE_NEXT);
     EXPECT(!hook_clicks_pending(&h));
 
